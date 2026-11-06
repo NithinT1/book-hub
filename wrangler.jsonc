@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "book-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "compatibility_flags": ["nodejs_compat"],
+  // Rules files (md) are bundled as text: see src/rules-defaults.ts
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  "vars": {
+    // Optional. Leave empty: the hub works out its own address. Set only to pin a custom domain,
+    // e.g. "https://books.example.com/mcp" and "https://books.example.com".
+    "MCP_RESOURCE": "",
+    "HUB_URL": "",
+    // Local behaviour tests only: .dev.vars sets this to "1" on the Mac. Must stay "0" here.
+    "DEV_NO_AUTH": "0"
+  },
+  "d1_databases": [
+    // Created automatically on first deploy (or paste the id from `npx wrangler d1 create book-hub`).
+    { "binding": "DB", "database_name": "book-hub", "migrations_dir": "migrations" }
+  ],
+  "kv_namespaces": [
+    // Sign-in tokens for AI apps. Created automatically on first deploy.
+    { "binding": "OAUTH_KV" }
+  ],
+  "observability": { "enabled": true },
+  "dev": { "port": 8788 },
+  // Set with: npx wrangler secret put <NAME>
+  "secrets": {
+    "required": ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "COOKIE_ENCRYPTION_KEY", "OWNER_GITHUB_LOGIN", "EXPORT_TOKEN"]
+  }
+}

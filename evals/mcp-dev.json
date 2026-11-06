@@ -1,0 +1,1 @@
+{ "mcpServers": { "bookhub": { "type": "http", "url": "http://localhost:8788/mcp-dev" } } }

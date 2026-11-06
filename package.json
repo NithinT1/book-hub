@@ -1,0 +1,55 @@
+{
+  "name": "book-hub",
+  "version": "2.7.0",
+  "description": "Your private AI reading advisor: a hub and connector for your AI chat app, on Cloudflare's free plan.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "node scripts/deploy.mjs",
+    "types": "wrangler types",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "agents": "^0.32.0",
+    "hono": "^4.13.16",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261103.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.156.2"
+  },
+  "cloudflare": {
+    "bindings": {
+      "GITHUB_CLIENT_ID": {
+        "description": "From your GitHub OAuth app (see docs/SETUP.md, step 4)."
+      },
+      "GITHUB_CLIENT_SECRET": {
+        "description": "From your GitHub OAuth app. Generate a client secret and paste it here."
+      },
+      "OWNER_GITHUB_LOGIN": {
+        "description": "Your GitHub username, exactly. Only this account can sign in."
+      },
+      "COOKIE_ENCRYPTION_KEY": {
+        "description": "Any long random string (64+ characters)."
+      },
+      "EXPORT_TOKEN": {
+        "description": "Another long random string. Used by the optional backup script."
+      }
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
+    "workerd@1.20260815.1": true,
+    "workerd@1.20261102.1": true,
+    "core-js-pure": false
+  }
+}

@@ -1,0 +1,10 @@
+# Secrets your hub needs. On Cloudflare, set each with: npx wrangler secret put <NAME>
+# For local testing only, copy this file to .dev.vars (never commit .dev.vars) and fill in values.
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+# Your GitHub username, exactly. Only this account can sign in.
+OWNER_GITHUB_LOGIN=
+# Any long random string: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+COOKIE_ENCRYPTION_KEY=
+# Another long random string, used by the optional backup script.
+EXPORT_TOKEN=

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS only: runs scripts/backup-export.sh every Sunday at 10:00 (or when the Mac wakes, if it was asleep).
+     1. Replace /PATH/TO/book-hub below with where you downloaded the project.
+     2. Copy this file to ~/Library/LaunchAgents/book-hub-backup.plist
+     3. Run: launchctl load ~/Library/LaunchAgents/book-hub-backup.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>book-hub-backup</string>
+  <key>ProgramArguments</key><array><string>/PATH/TO/book-hub/scripts/backup-export.sh</string></array>
+  <key>StartCalendarInterval</key><dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/tmp/book-hub-backup.log</string>
+  <key>StandardErrorPath</key><string>/tmp/book-hub-backup.log</string>
+</dict>
+</plist>

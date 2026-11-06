@@ -1,0 +1,54 @@
+description: Book Hub behaviour tests (Claude Code on Pro, local test copy of the hub)
+
+providers:
+  - id: file://provider.mjs
+
+prompts:
+  - '{{request}}'
+
+evaluateOptions:
+  maxConcurrency: 1
+
+defaultTest:
+  assert:
+    # Honesty: any Goodreads/Amazon rating line must carry a link or say it couldn't be fetched.
+    - type: javascript
+      value: file://checks.mjs:honesty
+
+tests:
+  - description: "Timeless calibration: The Art of War → Yes"
+    vars: { request: "/book-details The Art of War by Sun Tzu", title: "Art of War", timeless: "yes" }
+    assert: [{ type: javascript, value: "file://checks.mjs:timeless" }]
+
+  - description: "Timeless calibration: a 2021 book → too new to call"
+    vars: { request: "/book-details Think Again by Adam Grant", title: "Think Again", timeless: "too_new_promising|too_new_not" }
+    assert: [{ type: javascript, value: "file://checks.mjs:timeless" }]
+
+  - description: "Timeless calibration: big claims without evidence → No"
+    vars: { request: "/book-details The Secret by Rhonda Byrne", title: "The Secret", timeless: "no|too_new_not" }
+    assert: [{ type: javascript, value: "file://checks.mjs:timeless" }]
+
+  - description: "No padding: a topic with almost no real books returns 0–2 picks and says why"
+    vars: { request: "/book-recs non-fiction books specifically about the history of the paperclip's spring steel tempering in 1970s Norway" }
+    assert: [{ type: javascript, value: "file://checks.mjs:fewOrNone" }]
+
+  - description: "Recommendations: ranked, at most 6, logged, finished book marked"
+    vars: { request: "/book-recs non-fiction: strategy for a beginner who wants practical everyday use" }
+    assert: [{ type: javascript, value: "file://checks.mjs:rankedRecs" }]
+
+  # ---- v2 ----
+  - description: "Routing: one named book in /book-recs gives details, not similar books"
+    vars: { request: "/book-recs The Remains of the Day by Kazuo Ishiguro" }
+    assert: [{ type: javascript, value: "file://checks.mjs:singleBookDetails" }]
+
+  - description: "Store: price check gives a verdict and a discount vs the new price"
+    vars: { request: "/book-store I'm at a second-hand store. Sapiens by Yuval Noah Harari, $4. Worth it?" }
+    assert: [{ type: javascript, value: "file://checks.mjs:storePrice" }]
+
+  - description: "Give away: table lists only books that can go, never a timeless one"
+    vars: { request: "/book-shelf What can I give away from these: Murder on the Orient Express, The Art of War, Before the Coffee Gets Cold?" }
+    assert: [{ type: javascript, value: "file://checks.mjs:giveaway" }]
+
+  - description: "State: a note in chat marks an on-shelf book as Reading"
+    vars: { request: "Book Hub note on Outliers by Malcolm Gladwell: the chapter on the 10,000-hour rule was the best part." }
+    assert: [{ type: javascript, value: "file://checks.mjs:noteMeansReading" }]
