@@ -28,15 +28,23 @@ import {
 	TYPES,
 	type SaveResult,
 	getCurrency,
+	findReferenceScore,
+	FIT_LABELS,
+	TIERS,
+	VERDICTS,
+	VERDICT_HOWS,
+	saveQuiz,
+	IDEA_RESULTS,
+	QUIZ_OUTCOMES,
 } from "./db";
 import { CURRENCIES } from "./currency";
 import { saveReview, setStatus } from "./library";
 import { lookupBook } from "./openlibrary";
 import { ARCHIVE_REASONS, BUY_FORMATS, toStatus } from "./status";
-import { ensureDefaultRules } from "./rules-defaults";
+import { ensureDefaultRules, FLOW_NAMES, rulesForFlow } from "./rules-defaults";
 
 const INSTRUCTIONS = `Book Hub is the user's private reading hub: library, buy list, notes, reviews, recommendation history and the rules for how to answer book questions.
-Before answering a book request or saving anything, call get_rules (at least "connector-guide" and "honesty") and follow them.
+Before answering a book request or saving anything, call get_rules with the flow for the request (recs, details, store, shelf, checkin, summary, discuss, quiz) and follow the rules it returns.
 Never invent books, ratings, prices, quotes or endorsements. There is no delete tool: deleting and merging happen in the hub.
 Results include hub_url links; end answers with them so the user can continue in the hub.`;
 
@@ -45,7 +53,7 @@ const STATUS_HELP =
 
 // The connector deliberately has no delete tools.
 export function createServer(context?: { requestInfo?: Request }) {
-	const server = new McpServer({ name: "Book Hub", version: "2.7.0" }, { instructions: INSTRUCTIONS });
+	const server = new McpServer({ name: "Book Hub", version: "2.9.0" }, { instructions: INSTRUCTIONS });
 	const login = getMcpAuthContext()?.props?.login as string | undefined;
 	const db = env.DB;
 	// Links in answers point at this hub: HUB_URL if set, else the address the connector was reached on.
@@ -57,12 +65,16 @@ export function createServer(context?: { requestInfo?: Request }) {
 		"get_rules",
 		{
 			description:
-				"Read the user's rules (criteria, output format, and how each feature works) from Book Hub. Call before answering any book request. Omit names to get all. Names: book-details, buy-decision, checkin, connector-guide, discussion, fiction-taste, honesty, most-featured, output-format, ranking, recommendations, research-reuse, shelf, store, summary, nonfiction-taste, tags, timeless-nonfiction, trusted-readers.",
-			inputSchema: z.object({ names: z.array(z.string()).optional() }),
+				"Read the user's rules (criteria, output format, and how each feature works) from Book Hub. Call before answering any book request. Pass the flow for the request (recs, details, store, shelf, checkin, summary, discuss) to get exactly the rules it needs, or names for specific rules. Omit both to get all.",
+			inputSchema: z.object({
+				flow: z.enum(FLOW_NAMES as [string, ...string[]]).optional().describe("recs | details | store | shelf | checkin | summary | discuss | quiz"),
+				names: z.array(z.string()).optional(),
+			}),
 		},
-		async ({ names }) => {
+		async ({ flow, names }) => {
 			await ensureDefaultRules(db);
-			const rules = await getRules(db, names);
+			const wanted = flow ? rulesForFlow(flow as (typeof FLOW_NAMES)[number], (await getRules(db)).map((r) => r.name)) : names;
+			const rules = await getRules(db, wanted);
 			if (rules.length === 0) return text(`No rules found${names ? ` for: ${names.join(", ")}` : ""}.`);
 			const cur = await getCurrency(db);
 			const sym = CURRENCIES[cur].symbol.trim();
@@ -79,9 +91,10 @@ export function createServer(context?: { requestInfo?: Request }) {
 			inputSchema: z.object({ title: z.string().min(1), author: z.string().optional() }),
 		},
 		async ({ title, author }) => {
-			const [hub, openLibrary] = await Promise.all([findSource(db, title, author), lookupBook(title, author)]);
+			const [hub, openLibrary, reference] = await Promise.all([findSource(db, title, author), lookupBook(title, author), findReferenceScore(db, title, author)]);
 			return json({
 				in_book_hub: hub,
+				...(reference ? { reference_score: { ...reference, use: "The reader's own saved Quality score for this book: use it as the Quality and say so." } } : {}),
 				open_library: openLibrary,
 				note: openLibrary.length
 					? "Open Library data can be wrong (years especially). Verify before relying on it and record the source."
@@ -155,7 +168,7 @@ export function createServer(context?: { requestInfo?: Request }) {
 		"get_source",
 		{
 			description:
-				"Get everything Book Hub holds on one source: details, editions, notes, appearance count, ★ most featured, and saved research (card + facts with age_days, to reuse per the research-reuse rule). Pass id, or title + author.",
+				"Get everything Book Hub holds on one source: details, editions, notes, appearance count, ★ most featured, the current Verdict (verdict_locked = the reader or a quiz set it; don't change it), quizzes (newest first; partial = stopped midway), any reference_score (the reader's own saved Quality), and saved research (card with Quality, Timeless and Fit, plus facts with age_days, to reuse per the research-reuse rule). Pass id, or title + author.",
 			inputSchema: z.object({ id: z.number().int().optional(), title: z.string().optional(), author: z.string().optional() }),
 		},
 		async ({ id, title, author }) => {
@@ -172,19 +185,20 @@ export function createServer(context?: { requestInfo?: Request }) {
 		"search_library",
 		{
 			description:
-				"Search or list Book Hub sources by text or status (want_to_buy returns the Buy list in the user's order). For recommending, prefer get_reading_profile.",
+				"Search or list Book Hub sources by text, status or verdict (want_to_buy returns the Buy list in the user's order). For recommending, prefer get_reading_profile.",
 			inputSchema: z.object({
 				query: z.string().optional(),
+				verdict: z.enum(VERDICTS).optional(),
 				status: z.string().refine((v) => toStatus(v) !== undefined, "Unknown status").optional().describe(STATUS_HELP),
 				kind: z.enum(KINDS).optional(),
 				limit: z.number().int().min(1).max(200).optional(),
 			}),
 		},
-		async ({ status, ...opts }) => {
+		async ({ status, verdict, ...opts }) => {
 			const st = toStatus(status);
-			const rows = await listSources(db, { ...opts, status: st, sort: st === "want_to_buy" ? "buy" : "recent" });
+			const rows = await listSources(db, { ...opts, status: st, verdictAny: verdict ? [verdict] : undefined, sort: st === "want_to_buy" ? "buy" : "recent" });
 			return json(
-				rows.map((s) => ({ id: s.id, title: s.title, authors: s.authors, type: s.type, year: s.year, status: s.library_status, buy_rank: s.buy_rank, rating: s.rating, appearances: s.appearance_count, hub_url: link(`/book/${s.id}`) })),
+				rows.map((s) => ({ id: s.id, title: s.title, authors: s.authors, type: s.type, year: s.year, status: s.library_status, verdict: s.verdict, quality: s.quality, fit: s.fit, buy_rank: s.buy_rank, rating: s.rating, appearances: s.appearance_count, hub_url: link(`/book/${s.id}`) })),
 			);
 		},
 	);
@@ -269,20 +283,79 @@ export function createServer(context?: { requestInfo?: Request }) {
 	server.registerTool(
 		"save_card",
 		{
-			description: "Save the full card for a source (markdown, as shown to the user) plus its key verdicts, so it can be reused and filtered in the hub. Replaces the previous card.",
+			description:
+				"Save the full card for a source (markdown, as shown to the user) plus its Quality, Timeless, Fit and Verdict, so they're reused and shown in the hub. Replaces the previous card. The Verdict is kept on the book with its history; if the reader set their own, it isn't changed.",
 			inputSchema: z.object({
 				source_id: z.number().int(),
 				markdown: z.string().min(1).max(60000),
-				timeless: z.enum(["yes", "no", "too_new_promising", "too_new_not", "not_applicable"]).optional().describe("not_applicable for fiction"),
-				buy: z.enum(["first_hand", "second_hand", "kindle", "summary", "skip", "not_sure"]).optional(),
+				quality: z.number().min(0).max(10).optional().describe("0–10, one decimal (quality rule)"),
+				quality_tier: z.enum(TIERS).optional(),
+				quality_factors: z.record(z.string().max(40), z.number().int().min(1).max(5)).optional().describe('Factor name → 1–5, e.g. {"Foundation": 4, "Reach": 5}'),
+				belief: z.string().max(300).optional().describe("The belief it breaks, if you can name one"),
+				mistake: z.string().max(300).optional().describe("The costly mistake it prevents, if you can name one"),
+				critic: z.string().max(200).optional().describe("Its strongest critic"),
+				timeless: z.enum(["yes", "no", "too_new_promising", "too_new_not", "not_applicable"]).optional().describe("Fiction: classic status (yes / no / too_new_promising / too_new_not)"),
+				fit: z.number().min(0).max(10).optional().describe("0–10 (fit rule)"),
+				fit_label: z.enum(FIT_LABELS).optional(),
+				fit_reason: z.string().max(300).optional(),
+				verdict: z.enum(VERDICTS).optional().describe("verdict rule"),
+				verdict_how: z.enum(VERDICT_HOWS).optional().describe("For read / read_parts / reread: how to get it"),
+				verdict_why: z.string().max(500).optional().describe("One line"),
 				confidence: z.enum(["high", "medium", "low"]).optional(),
 				core_idea: z.string().max(1000).optional(),
+				buy: z.enum(["first_hand", "second_hand", "kindle", "summary", "skip", "not_sure"]).optional().describe("Older field; use verdict and verdict_how instead"),
 			}),
 		},
 		async ({ source_id, ...card }) => {
 			if (!(await getSourceRow(db, source_id))) return text(`No source with id ${source_id}.`);
-			await saveCard(db, source_id, card);
-			return text(`Saved card for source #${source_id}.`);
+			const r = await saveCard(db, source_id, card);
+			const note =
+				r.verdict === "locked" ? ` The reader set their own Verdict (${r.current}); it was kept. If you disagree, say so in one line.`
+				: r.verdict === "changed" ? ` Verdict changed from ${r.previous} to ${card.verdict ?? "the new one"}: tell the reader why.`
+				: "";
+			return text(`Saved card for source #${source_id}.${note}`);
+		},
+	);
+
+	server.registerTool(
+		"save_quiz",
+		{
+			description:
+				"Save a Book Quiz result (quiz rule). Call with partial: true after every answer (progress; the hub keeps one in-progress record per book and updates it), then once more with the final result. A finished quiz sets and locks the book's Verdict (unless outcome is info). History of finished quizzes is kept. Never changes the book's status.",
+			inputSchema: z.object({
+				source_id: z.number().int(),
+				score: z.number().min(0).max(10).describe('"You already know", 0–10; high = the reader already holds the book'),
+				practice: z.number().min(0).max(10).optional().describe("Self books: how much the reader actually does it"),
+				mode: z.enum(["scan", "deep"]).optional(),
+				partial: z.boolean().optional().describe("Progress so far (save after every answer); false or omitted for the final result"),
+				outcome: z.enum(QUIZ_OUTCOMES).optional().describe("keep | skip | practise | info (biographies, wisdom texts, art books: informs only)"),
+				verdict: z.enum(VERDICTS).optional(),
+				verdict_why: z.string().max(500).optional(),
+				practice_tip: z.string().max(500).optional().describe("For practise: the one practice"),
+				ideas: z
+					.array(
+						z.object({
+							idea: z.string().min(1).max(300),
+							core: z.boolean().optional(),
+							result: z.enum(IDEA_RESULTS),
+							covered_by: z.string().max(200).optional().describe("A finished book that carries it"),
+							note: z.string().max(500).optional().describe("The right answer in one line"),
+						}),
+					)
+					.min(1)
+					.max(15),
+				ideas_left: z.array(z.string().max(300)).max(15).optional().describe("Ideas marked New or Partly"),
+				replacement: z.string().max(500).optional(),
+				chapters: z.string().max(500).optional().describe("For Read parts: which chapters"),
+				confidence: z.enum(["high", "medium"]).optional(),
+				summary: z.string().max(30000).optional().describe("The debrief (markdown)"),
+			}),
+		},
+		async ({ source_id, ...quiz }) => {
+			if (!(await getSourceRow(db, source_id))) return text(`No source with id ${source_id}.`);
+			const r = await saveQuiz(db, source_id, quiz);
+			const v = r.verdict.verdict === "not_set" ? (quiz.partial ? " Progress saved; if the reader stops, they can continue from Home." : "") : ` Verdict ${r.verdict.verdict === "unchanged" ? "unchanged" : "set and locked"}.`;
+			return text(`Saved quiz #${r.id} for source #${source_id}: you already know ${r.score}/10.${v} ${link(`/book/${source_id}`)}`);
 		},
 	);
 

@@ -1,12 +1,12 @@
 // Home, Buy list, My shelf, Discover, and all requests.
 
 import { Hono } from "hono";
-import { getCurrency, getRules, getSetting, KINDS, listSources, recentRequests, TYPES } from "../db";
-import { TASTE, tasteIsEmpty } from "../taste";
+import { countVerdictChanges, FIT_LABELS, getCurrency, getRules, getSetting, KINDS, listSources, qualityTimesFit, recentRequests, setSetting, TYPES, unfinishedQuizzes, VERDICTS } from "../db";
+import { profileIsEmpty } from "../profile";
 import { showPriceText } from "../currency";
 import { allTags } from "../library";
 import { STATUSES, toStatus, type Status } from "../status";
-import { askButton, bookRow, claudeLink, esc, featureLabel, tip, layout, list, pager, TIMELESS_LABEL, TYPE_LABEL, KIND_LABEL, STATUS_LABEL, type HubEnv } from "./ui";
+import { askButton, bookRow, claudeLink, esc, featureLabel, FIT_LABEL, tip, layout, list, pager, TIMELESS_LABEL, TYPE_LABEL, KIND_LABEL, STATUS_LABEL, VERDICT_LABEL, type HubEnv } from "./ui";
 
 export const lists = new Hono<HubEnv>();
 
@@ -35,6 +35,7 @@ export const COMMANDS: [string, string][] = [
 	["/book-store", "At a book store: price check a book, or find gems on a rack photo"],
 	["/book-shelf", "Add books from shelf photos, or decide what to give away"],
 	["/book-checkin", "Monthly/quarterly: what to read next + pending actions"],
+	["/book-quiz", "How much of a book do you already know? About 5–10 minutes; decides whether it's still worth reading"],
 	["/book-hub-feedback", "Report a problem or change request"],
 ];
 
@@ -42,30 +43,46 @@ export const COMMANDS: [string, string][] = [
 
 lists.get("/", async (c) => {
 	const db = c.env.DB;
-	const [reading, buy, featured, requests, counts, fb] = await Promise.all([
+	const [reading, buy, featured, requests, counts, fb, activity, changed, unfinished] = await Promise.all([
 		listSources(db, { status: "reading", sort: "recent", limit: 5 }),
 		listSources(db, { status: "want_to_buy", sort: "buy", limit: 5 }),
 		listSources(db, { mostFeatured: true, statuses: ["none", "want_to_buy", "own"], sort: "featured", limit: 200 }),
 		recentRequests(db, 5),
 		db.prepare("SELECT library_status AS s, COUNT(*) AS n FROM sources GROUP BY library_status").all<{ s: string; n: number }>(),
 		db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status = 'open'").first<{ n: number }>(),
+		db.prepare("SELECT (SELECT COUNT(*) FROM requests) + (SELECT COUNT(*) FROM cards) AS n").first<{ n: number }>(),
+		countVerdictChanges(db),
+		unfinishedQuizzes(db),
 	]);
 	const count = (s: string) => counts.results.find((r) => r.s === s)?.n ?? 0;
-	// A one-time nudge for new hubs: shown until taste is saved or "Later" is tapped.
-	const showTaste =
-		!(await getSetting(db, "taste_card")) &&
-		tasteIsEmpty(Object.fromEntries((await getRules(db, TASTE.map((t) => t.rule))).map((r) => [r.name, r.body])));
+	// Set-up for new hubs: three steps, each skippable; shown until all are done or "Hide for now".
+	const steps = [
+		{ done: (activity?.n ?? 0) > 0, title: "Connect your AI app", sub: "Add the Book Hub connector in your AI app, then ask it about any book.", href: "/settings#connection", cta: "How" },
+		{
+			done: !profileIsEmpty(Object.fromEntries((await getRules(db, ["fiction-profile", "nonfiction-profile"])).map((r) => [r.name, r.body]))),
+			title: "About me as a reader",
+			sub: "Why you read, your subjects, what you're working on. Sharper Fit scores. An AI interview is coming soon.",
+			href: "/rules/nonfiction-profile",
+			cta: "Start",
+		},
+		{ done: ["own", "reading", "finished"].some((st) => count(st) > 0), title: "Add your shelf", sub: "Snap a photo of your bookshelf in your AI app.", href: claudeLink("/book-shelf I'm sending photos of my bookshelf — add the books to my library."), cta: "Open AI", ext: true },
+	];
+	const showSetup = !(await getSetting(db, "setup_card")) && steps.some((st) => !st.done);
+	const doneCount = steps.filter((st) => st.done).length;
 	const buyPrices = await latestPrices(db, buy.map((s) => s.id));
-	const comingUp = featured.filter((s) => !s.hide_from_featured);
+	// Keeps coming up: the best for you first (Quality × Fit), then how often it came up.
+	const comingUp = featured.filter((s) => !s.hide_from_featured).sort((a, b) => qualityTimesFit(b) - qualityTimesFit(a) || b.appearance_count - a.appearance_count);
 
 	return c.html(
 		layout(c, "home", "Home", `
-<form class="search" method="get" action="/discover"><input type="search" name="q" placeholder="Search books, authors, tags, one-liners" aria-label="Search"><button class="btn">Search</button></form>
+${showSetup ? `<section class="setup" aria-label="Set up Book Hub">
+  <div class="setup-head"><h2>Set up Book Hub</h2><span class="muted">${doneCount} of 3 done · about 5 minutes</span></div>
+  <div class="progress" aria-hidden="true"><span style="width:${Math.round((doneCount / 3) * 100)}%"></span></div>
+  <ol>${steps.map((st, i) => `<li class="${st.done ? "done" : ""}"><span class="num">${st.done ? "✓" : i + 1}</span><span class="what"><strong>${esc(st.title)}</strong><span class="muted">${esc(st.sub)}</span></span>${st.done ? "" : `<a class="act${i === steps.findIndex((x) => !x.done) ? " primary" : ""}" href="${esc(st.href)}"${st.ext ? ` target="_blank" rel="noopener"` : ""}>${st.cta}</a>`}</li>`).join("")}</ol>
+  <form method="post" action="/setup/hide" class="actions"><button class="btn secondary small">Hide for now</button><span class="muted">Each step is also in Profile &amp; settings.</span></form>
+</section>` : ""}
 
-${showTaste ? `<section class="store-panel"><div><strong>Tell Book Hub your taste (2 min)</strong><span class="muted">The fiction you enjoy, topics you care about, how you like to get books. It makes Fit scores and rankings yours.</span></div>
-<div class="store-btns"><a class="btn" href="/taste">Set up</a><form method="post" action="/taste/later" style="margin:0"><button class="btn secondary">Later</button></form></div></section>` : ""}
-
-<section class="panel">
+<section class="panel" id="ask">
   <h2>Ask AI</h2>
   <textarea id="topic" rows="2" placeholder="A topic, a question, or book names…" aria-label="Topic or book names"></textarea>
   <div class="actions">
@@ -85,10 +102,16 @@ ${showTaste ? `<section class="store-panel"><div><strong>Tell Book Hub your tast
   ${fb?.n ? `<a href="/feedback"><strong>${fb.n}</strong><span>Open feedback</span></a>` : ""}
 </div>
 
+${changed ? `<p class="notice-line">${changed} ${changed === 1 ? "book's Verdict" : "books' Verdicts"} changed recently. <a href="/discover?changed=1">See why →</a></p>` : ""}
+
+${unfinished.length ? `<section class="panel"><h2>Finish your quiz</h2><ul class="plain">${unfinished
+			.map((q) => `<li><a href="/book/${q.source_id}">${esc(q.title)}</a> <span class="muted">· stopped ${esc(q.created_at.slice(0, 10))} · ${q.ideas.length} answered · so far you know ${esc(String(q.score))}/10</span> <a class="act" href="${esc(claudeLink(`/book-quiz Continue my quiz on ${q.title}${q.authors[0] ? ` by ${q.authors[0]}` : ""}`))}" target="_blank" rel="noopener">Continue</a></li>`)
+			.join("")}</ul></section>` : ""}
+
 ${reading.length ? `<section class="panel"><h2>Reading now</h2>${list(reading.map((s) => bookRow(s, { back: "/" })), "")}</section>` : ""}
 
 <section class="panel"><h2>Buy list <a href="/buy">See all →</a></h2>
-${list(buy.map((s) => bookRow(s, { back: "/", price: buyPrices.get(s.id) ?? null })), "Empty. Add books from Discover or any book page.")}</section>
+${list(buy.map((s) => bookRow(s, { back: "/", price: buyPrices.get(s.id) ?? null, verdictNote: true })), "Empty. Add books from Discover or any book page.")}</section>
 
 ${comingUp.length ? `<section class="panel"><h2>★ Keeps coming up — not read yet ${comingUp.length > 5 ? `<a href="/discover?featured=1">See all ${comingUp.length} →</a>` : ""}</h2>
 ${list(comingUp.slice(0, 5).map((s) => bookRow(s, { hideFeatured: true, back: "/" })), "")}</section>` : ""}
@@ -119,7 +142,7 @@ lists.get("/buy", async (c) => {
 <section class="store-panel"><div><strong>At a bookstore now?</strong><span class="muted">Snap a price tag or a whole shelf. Your AI checks it against your lists and rules.</span></div>
 <div class="store-btns">${askButton("2nd-hand price check", "/book-store Second-hand price check: I'll send a photo or the name of a book and the price on it.", "btn", "priceCheck")}
 ${askButton("Rack gem check", "/book-store Rack gem check: I'm sending a photo of a rack — find up to 5 books worth picking.", "btn secondary", "rackCheck")}</div></section>
-${list(rows.map((s) => bookRow(s, { back: "/buy", price: prices.get(s.id) ?? null, reorder: true })), "Nothing here yet. On any book in Discover, tap “Add to buy list”.")}`),
+${list(rows.map((s) => bookRow(s, { back: "/buy", price: prices.get(s.id) ?? null, reorder: true, verdictNote: true })), "Nothing here yet. On any book in Discover, tap “Add to buy list”.")}`),
 	);
 });
 
@@ -151,7 +174,7 @@ ${askButton("Give-away check", "/book-shelf Give-away check: which of my books c
 
 // ---- Discover ----------------------------------------------------------------
 
-const SORT_LABEL = { best: "Best first", recent: "Recently updated", featured: "Most featured", title: "Title", year: "Newest" } as const;
+const SORT_LABEL = { best: "Best first", quality: "Quality", fit: "Fit for me", featured: "Most featured", recent: "Recently updated", title: "Title", year: "Newest" } as const;
 
 /** A dropdown of checkboxes — several values can be ticked. Works the same on phone and laptop. */
 function multiSelect(name: string, label: string, options: [string, string][], selected: string[]) {
@@ -169,6 +192,10 @@ lists.get("/discover", async (c) => {
 	const types = many("type", TYPES);
 	const kinds = many("kind", KINDS);
 	const timeless = many("timeless", Object.keys(TIMELESS_LABEL));
+	const verdicts = many("verdict", VERDICTS);
+	const forMe = many("for", FIT_LABELS);
+	const quiz = many("quiz", ["keep", "skip", "practise", "none"]);
+	const changed = c.req.query("changed") === "1";
 	const tagValues = url.searchParams.getAll("tag").map((t) => t.trim()).filter(Boolean);
 	const mostFeatured = c.req.query("featured") === "1";
 	const sort = (Object.keys(SORT_LABEL) as (keyof typeof SORT_LABEL)[]).find((s) => s === c.req.query("sort")) ?? "best";
@@ -180,6 +207,11 @@ lists.get("/discover", async (c) => {
 			types,
 			kinds,
 			timelessAny: timeless,
+			verdictAny: verdicts,
+			fitLabelAny: forMe,
+			hideSkip: true,
+			verdictChanged: changed,
+			quizAny: quiz,
 			tags: tagValues,
 			mostFeatured,
 			sort,
@@ -187,18 +219,24 @@ lists.get("/discover", async (c) => {
 		}),
 		allTags(c.env.DB),
 	]);
-	const filtered = Boolean(q || statuses.length || types.length || kinds.length || timeless.length || tagValues.length || mostFeatured);
+	const filtered = Boolean(q || statuses.length || types.length || kinds.length || timeless.length || verdicts.length || forMe.length || quiz.length || changed || tagValues.length || mostFeatured);
+	const showPointer = !(await getSetting(c.env.DB, "discover_pointer"));
 	const back = `/discover${url.search}`;
 
 	return c.html(
 		layout(c, "discover", "Discover", `
-<p class="muted">Everything that has come up. Best first: books you haven't acted on, ★ keeps-coming-up and timeless ones at the top; Reading and Buy list at the end. Archived is hidden unless you tick it.</p>
+${showPointer ? `<section class="pointer"><p><strong>Looking for something new?</strong> Discover lists books from your past conversations. To find new ones, ask on Home.</p>
+<div class="pointer-btns"><a class="act primary" href="/#ask">Ask AI on Home</a><form method="post" action="/discover/pointer/hide"><button class="act" aria-label="Hide this tip">Got it</button></form></div></section>` : ""}
+<p class="muted">Everything that has come up. Best first: books you haven't acted on, ★ keeps-coming-up, then the best for you (Quality × Fit); Reading and Buy list at the end. Skip, Quizzed: skip and Archived are hidden unless you tick them.${changed ? " Showing books whose Verdict changed in the last 30 days." : ""}</p>
 <form class="filters" method="get">
   <input type="search" name="q" value="${esc(q ?? "")}" placeholder="Search title, author, tag, one-liner" aria-label="Search">
   ${multiSelect("status", "Status", STATUSES.map((s) => [s, STATUS_LABEL[s]]), statuses)}
   ${multiSelect("type", "Type", TYPES.map((t) => [t, TYPE_LABEL[t]]), types)}
   ${multiSelect("kind", "Kind", KINDS.map((k) => [k, KIND_LABEL[k]]), kinds)}
+  ${multiSelect("verdict", "Verdict", VERDICTS.map((v) => [v, VERDICT_LABEL[v]]), verdicts)}
   ${multiSelect("timeless", "Timeless", Object.entries(TIMELESS_LABEL).filter(([v]) => v !== "not_applicable"), timeless)}
+  ${multiSelect("for", "For me", FIT_LABELS.filter((f) => f !== "none").map((f) => [f, FIT_LABEL[f]]), forMe)}
+  ${multiSelect("quiz", "Quiz", [["keep", "Quizzed: keep"], ["practise", "Quizzed: practise"], ["skip", "Quizzed: skip"], ["none", "Not quizzed"]], quiz)}
   ${tags.length ? multiSelect("tag", "Tags", tags.map((t) => [t.tag, `${t.tag} (${t.n})`]), tagValues) : ""}
   <select name="sort" aria-label="Sort">${Object.entries(SORT_LABEL).map(([v, l]) => `<option value="${v}"${v === sort ? " selected" : ""}>${l}</option>`).join("")}</select>
   <label class="check"><input type="checkbox" name="featured" value="1"${mostFeatured ? " checked" : ""}> ★ Most featured</label>
@@ -207,6 +245,37 @@ lists.get("/discover", async (c) => {
 <p class="muted">${rows.length} ${rows.length === 1 ? "result" : "results"}</p>
 ${list(rows.map((s) => bookRow(s, { back })), filtered ? "Nothing matches. Try clearing the filters." : "Nothing yet.")}
 `),
+	);
+});
+
+lists.post("/discover/pointer/hide", async (c) => {
+	await setSetting(c.env.DB, "discover_pointer", "hidden");
+	return c.redirect("/discover", 303);
+});
+
+// ---- Search (from the 🔍 in the top bar) ---------------------------------------
+// Everything in the hub. Your books first; Archived and Skip below, only when something matches there.
+
+lists.get("/search", async (c) => {
+	const q = c.req.query("q")?.trim().slice(0, 200) ?? "";
+	const rows = q ? await listSources(c.env.DB, { query: q, includeArchived: true, sort: "best", limit: 300 }) : [];
+	// Title matches first, then the usual best-first order.
+	const lq = q.toLowerCase();
+	rows.sort((a, b) => Number(!a.title.toLowerCase().includes(lq)) - Number(!b.title.toLowerCase().includes(lq)));
+	const setAside = (r: (typeof rows)[number]) => r.library_status === "archived" || r.verdict === "skip";
+	const yours = rows.filter((r) => !setAside(r));
+	const aside = rows.filter(setAside);
+	const back = `/search?q=${encodeURIComponent(q)}`;
+	const quoted = `“${esc(q)}”`;
+	return c.html(
+		layout(c, null, "Search", `
+<form class="search" method="get" action="/search" role="search"><input type="search" name="q" value="${esc(q)}" placeholder="Search your books: title, author, tag…" aria-label="Search your books"${q ? "" : " autofocus"}><button class="btn">Search</button></form>
+${!q ? `<p class="muted">Search everything in your hub by title, author, tag or one-liner. To find new books, use <a href="/#ask">Ask AI on Home</a>.</p>`
+	: !rows.length ? `<p class="empty">Nothing in your hub matches ${quoted}. To find new books, use <a href="/#ask">Ask AI on Home</a>.</p>`
+	: `<section class="results"><h2>Your books <span class="muted">(${yours.length})</span></h2>
+${yours.length ? list(yours.map((r) => bookRow(r, { back })), "") : `<p class="empty">No match in your books for ${quoted}.</p>`}</section>
+${aside.length ? `<section class="results set-aside"><h2>Archived &amp; Skipped <span class="muted">(${aside.length})</span></h2><p class="muted">${yours.length ? "Also matching: books" : "Showing matches among books"} you archived or decided to skip.</p>
+${list(aside.map((r) => bookRow(r, { back })), "")}</section>` : ""}`}`, { search: true }),
 	);
 });
 

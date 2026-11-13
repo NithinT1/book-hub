@@ -5,7 +5,7 @@ description: Book Hub long summary. Use when the user asks for a detailed book s
 
 # Book Hub · Long summary
 
-1. Call the Book Hub connector: `get_rules` with names `["summary", "honesty"]`.
+1. Call the Book Hub connector: `get_rules` with flow `"summary"` (it returns every rule this command needs).
 2. Find or save the book (`lookup_book` / `save_source`), then `get_summary` — if one exists, ask whether to open it or write a fresh one.
 3. Follow the **summary** rule, then save with `save_summary`. Don't ask whether to archive the book. End with the Book Hub link.
 

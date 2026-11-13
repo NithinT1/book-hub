@@ -5,7 +5,7 @@ description: Book Hub reading companion. Use when the user wants to discuss, und
 
 # Book Hub · Discussion
 
-1. Call the Book Hub connector: `get_rules` with names `["discussion", "honesty"]`.
+1. Call the Book Hub connector: `get_rules` with flow `"discuss"` (it returns every rule this command needs).
 2. Follow the **discussion** rule: load notes and past discussions first, go as deep as possible, label confidence and simulated-author mode.
 3. Save with `save_discussion` when the user says "save" (offer it at the end).
 

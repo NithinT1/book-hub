@@ -6,7 +6,7 @@ import { ensureDefaultRules } from "../src/rules-defaults";
 const db = env.DB;
 
 beforeEach(async () => {
-	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "sources", "rules_history", "rules", "feedback"]) {
+	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "verdict_history", "quizzes", "sources", "rules_history", "rules", "feedback"]) {
 		await db.prepare(`DELETE FROM ${t}`).run();
 	}
 });
@@ -123,7 +123,8 @@ describe("rules", () => {
 	it("seeds defaults once, keeps edits, and versions every change", async () => {
 		await ensureDefaultRules(db);
 		const before = await getRules(db);
-		expect(before.map((r) => r.name)).toContain("timeless-nonfiction");
+		expect(before.map((r) => r.name)).toEqual(expect.arrayContaining(["quality-nonfiction", "fit", "verdict", "handover", "nonfiction-profile"]));
+		expect(before.map((r) => r.name)).not.toContain("timeless-nonfiction");
 		expect(before.find((r) => r.name === "ranking")!.title).toBe("Ranking");
 
 		expect(await saveRule(db, "ranking", "Ranking", "# Ranking\nedited")).toBe(2);

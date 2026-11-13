@@ -9,3 +9,4 @@ evals/summary.json
 evals/.claude/
 CLAUDE.local.md
 wrangler.local.jsonc
+scripts/local/

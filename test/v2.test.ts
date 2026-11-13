@@ -23,7 +23,7 @@ const get = (path: string) => worker.fetch(new Request(BASE + path, { headers: {
 
 beforeEach(async () => {
 	cookie = (await createSessionCookie("owner", env.COOKIE_ENCRYPTION_KEY)).split(";")[0];
-	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "source_tags", "facts", "cards", "discussions", "summaries", "sources", "series", "rules_history", "rules"]) await db.prepare(`DELETE FROM ${t}`).run();
+	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "source_tags", "facts", "cards", "verdict_history", "quizzes", "discussions", "summaries", "sources", "series", "rules_history", "rules"]) await db.prepare(`DELETE FROM ${t}`).run();
 });
 
 describe("status rules (pure)", () => {

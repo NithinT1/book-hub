@@ -5,7 +5,7 @@ description: Book Hub at a book store. Use when the user is at a (second-hand) b
 
 # Book Hub · At a book store
 
-1. Call the Book Hub connector: `get_rules` with names `["store", "honesty", "timeless-nonfiction", "fiction-taste", "buy-decision", "research-reuse", "connector-guide", "tags"]`.
+1. Call the Book Hub connector: `get_rules` with flow `"store"` (it returns every rule this command needs).
 2. Follow the **store** rule: one book + price → verdict and discount vs the new price; a rack photo → at most 5 gems in a table, then short cards.
 3. Don't change statuses. End with Book Hub links. No follow-up questions.
 

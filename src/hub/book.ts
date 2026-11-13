@@ -13,7 +13,12 @@ import {
 	listSummaries,
 	mergeSources,
 	saveSource,
+	setVerdict,
+	unlockVerdict,
+	VERDICTS,
+	VERDICT_HOWS,
 	type SourceDetail,
+	type Verdict,
 } from "../db";
 import { applyStatusEvent, moveOnBuyList, removeTag, REVIEW_SECTIONS, reviewFromMarkdown, reviewToMarkdown, saveReview, saveTags, setHiddenFromFeatured, setStatus } from "../library";
 import { CURRENCIES, isCurrency, showMoney } from "../currency";
@@ -24,13 +29,19 @@ import { lookupBook } from "../openlibrary";
 import { ARCHIVE_LABEL, ARCHIVE_REASONS, BUY_FORMAT_LABEL, BUY_FORMATS, STATUSES, toStatus, type ArchiveReason, type BuyFormat } from "../status";
 import {
 	askButton,
-	BUY_LABEL,
 	claudeLink,
 	cover,
 	esc,
 	rowActions,
 	featureLabel,
+	fitText,
+	HOW_LABEL,
+	isQuizzable,
+	QUIZ_OUTCOME_LABEL,
 	KIND_LABEL,
+	qualityText,
+	VERDICT_LABEL,
+	verdictText,
 	layout,
 	originLabel,
 	safeBack,
@@ -75,7 +86,7 @@ book.get("/book/:id", async (c) => {
     ${s.subtitle ? `<p class="muted">${esc(s.subtitle)}</p>` : ""}
     <p>${esc(s.authors.join(", ") || "Author unknown")}</p>
     ${s.one_liner ? `<p class="one-liner">${esc(s.one_liner)}</p>` : ""}
-    <div class="tags">${s.most_featured ? `<span class="tag star">★ Most featured</span>` : ""}${statusBadge(s)}${card?.timeless && card.timeless !== "not_applicable" ? `<span class="tag">${TIMELESS_LABEL[card.timeless]}</span>` : ""}${card?.buy ? `<span class="tag">${BUY_LABEL[card.buy]}</span>` : ""}${s.rating != null ? `<span class="tag">★ ${s.rating}/10</span>` : ""}</div>
+    <div class="tags">${s.most_featured ? `<span class="tag star">★ Most featured</span>` : ""}${statusBadge(s)}${s.rating != null ? `<span class="tag">★ ${s.rating}/10</span>` : ""}</div>
     <dl class="facts">
       <dt>Kind</dt><dd>${KIND_LABEL[s.kind]}${s.type ? ` · ${TYPE_LABEL[s.type]}` : ""}${s.is_textbook ? " · Textbook" : ""}</dd>
       <dt>Year</dt><dd>${s.year ? `${yearText(s.year)}${s.year_source ? ` <small class="muted">(${esc(sourceLabel(s.year_source))})</small>` : ""}` : "—"}</dd>
@@ -86,6 +97,8 @@ book.get("/book/:id", async (c) => {
     </dl>
   </div>
 </div>
+
+${scoreStrip(s)}
 
 ${actionsPanel(s)}
 
@@ -158,6 +171,63 @@ ${s.editions.length ? `<section class="panel"><h2>Translations & editions</h2><u
 	/**
 	 * Same main actions as the book's row in any list (rowActions), then one quiet line of the rarer ones.
 	 */
+	/** Status · Verdict · Timeless · Quality · Fit, with the reasons one tap away. */
+	function scoreStrip(s: SourceDetail) {
+		const q = card?.quality ?? s.reference_score?.quality ?? null;
+		const qWhy = card?.quality != null ? (card.confidence ? `Confidence: ${esc(card.confidence)}` : "") : s.reference_score ? "From your saved scores" : "Not scored yet";
+		const timeless = card?.timeless && card.timeless !== "not_applicable" ? ({ yes: "Yes", no: "No", too_new_promising: "Too new: promising", too_new_not: "Too new: not" } as Record<string, string>)[card.timeless] ?? "—" : "—";
+		const cell = (k: string, v: string, why: string, cls = "") => `<div class="cell${cls}"><span class="k">${k}</span><span class="v">${v || "—"}</span><span class="why">${why}</span></div>`;
+		const factors = card?.quality_factors ? Object.entries(card.quality_factors) : [];
+		const history = s.verdict_history;
+		const verdictForm = `<form method="post" action="/book/${id}/verdict" class="inline-fields verdict-form">
+  <label>My verdict <select name="verdict">${VERDICTS.map((v) => `<option value="${v}"${v === s.verdict ? " selected" : ""}>${VERDICT_LABEL[v]}</option>`).join("")}</select></label>
+  <label>How <select name="how"><option value="">—</option>${VERDICT_HOWS.map((h) => `<option value="${h}"${h === s.verdict_how ? " selected" : ""}>${HOW_LABEL[h]}</option>`).join("")}</select></label>
+  <input name="why" placeholder="Why (optional)" maxlength="300" value="${s.verdict_locked ? esc(s.verdict_why ?? "") : ""}" style="flex:1 1 200px">
+  <button class="btn secondary small">🔒 Set my verdict</button></form>`;
+		return `<section class="strip" aria-label="Scores">
+${cell("Status", esc(statusLabel(s)), "You set this")}
+${cell("Verdict", esc(verdictText(s.verdict, s.verdict_how)) || "Not decided", s.verdict_by === "quiz" ? `🔒 From your quiz${s.verdict_why ? `: ${esc(s.verdict_why)}` : ""}` : s.verdict_locked ? "🔒 Your verdict" : esc(s.verdict_why ?? (card ? "" : "Ask for details to get one")), " verdict")}
+${cell("Timeless", esc(timeless), card?.timeless === "not_applicable" ? "Fiction" : "")}
+${cell("Quality", esc(qualityText(q, card?.quality_tier ?? s.reference_score?.tier?.toLowerCase())), qWhy)}
+${cell("Fit for you", esc(fitText(card?.fit, card?.fit_label)), esc(card?.fit_reason ?? ""))}
+</section>
+<details class="panel why-scores"><summary><strong>Why these scores</strong></summary>
+${factors.length ? `<h3>Quality, factor by factor</h3><div class="factors">${factors.map(([k, v]) => `<div>${esc(k)}<b>${esc(String(v))}</b></div>`).join("")}</div>` : ""}
+${s.reference_score && card?.quality == null ? `<p class="muted">From your saved scores: ${esc(String(s.reference_score.score))}${s.reference_score.tier ? ` · ${esc(s.reference_score.tier)}` : ""}${s.reference_score.factors ? ` · ${esc(s.reference_score.factors)}` : ""}</p>` : ""}
+${card?.belief || s.reference_score?.belief ? `<p><strong>Belief it breaks:</strong> ${esc(card?.belief ?? s.reference_score?.belief ?? "")}</p>` : ""}
+${card?.mistake || s.reference_score?.mistake ? `<p><strong>Mistake it prevents:</strong> ${esc(card?.mistake ?? s.reference_score?.mistake ?? "")}</p>` : ""}
+${card?.critic ? `<p><strong>Strongest critic:</strong> ${esc(card.critic)}</p>` : ""}
+${card?.fit_reason ? `<p><strong>Fit:</strong> ${esc(card.fit_reason)}</p>` : ""}
+<h3>Verdict history</h3>
+${history.length ? `<ul class="plain">${history.map((h) => `<li>${esc(verdictText(h.verdict, h.how))}${h.why ? ` <span class="muted">· ${esc(h.why)}</span>` : ""} <span class="muted">· ${h.set_by === "me" ? "you" : h.set_by === "quiz" ? "Book Quiz" : "your AI"} · ${esc(h.created_at.slice(0, 10))}</span></li>`).join("")}</ul>` : `<p class="muted">None yet.</p>`}
+${verdictForm}
+${s.verdict_locked ? `<form method="post" action="/book/${id}/verdict/unlock" class="actions"><button class="btn secondary small">Unlock: let my AI decide again</button></form>` : `<p class="muted">Setting your own verdict locks it: your AI can then only say if it disagrees. It never moves the book between your lists.</p>`}
+</details>
+${quizPanel(s)}`;
+	}
+
+	/** The latest Book Quiz (or the unfinished one), with earlier results underneath. */
+	function quizPanel(s: SourceDetail) {
+		const [latest, ...older] = s.quizzes;
+		if (!latest) return "";
+		const result = { held: "Held", known_not_lived: "Known, not lived", partly: "Partly", new: "New" } as Record<string, string>;
+		const done = older.find((q) => !q.partial);
+		return `<section class="panel" id="quiz"><h2>Book Quiz <span class="muted">· ${esc(latest.created_at.slice(0, 10))}</span></h2>
+${latest.partial
+		? `<p><strong>Unfinished</strong> · so far you already know ${esc(String(latest.score))}/10. <a href="${esc(claudeLink(`/book-quiz Continue my quiz on ${s.title}${by}`))}" target="_blank" rel="noopener">Continue in chat →</a></p>${done ? `<p class="muted">Last finished quiz: you already know ${esc(String(done.score))}/10 (${esc(done.created_at.slice(0, 10))}).</p>` : ""}`
+		: `<p class="quiz-score">You already know: <strong>${esc(String(latest.score))}/10</strong>${latest.practice != null ? ` · practice ${esc(String(latest.practice))}/10` : ""} → ${esc(QUIZ_OUTCOME_LABEL[latest.outcome ?? "info"] ?? "")}${latest.verdict ? ` · ${esc(verdictText(latest.verdict))}` : ""}</p>`}
+${latest.practice_tip ? `<p><strong>Practice:</strong> ${esc(latest.practice_tip)}</p>` : ""}
+${latest.ideas.length ? `<div class="table-wrap"><table><thead><tr><th>Idea</th><th>You</th><th>In one line</th></tr></thead><tbody>${latest.ideas
+			.map((i) => `<tr><td>${esc(i.idea)}${i.core ? ` <span class="tag">core</span>` : ""}${i.covered_by ? `<div class="muted">Covered by ${esc(i.covered_by)}</div>` : ""}</td><td>${esc(result[i.result] ?? i.result)}</td><td class="muted">${esc(i.note ?? "")}</td></tr>`)
+			.join("")}</tbody></table></div>` : ""}
+${latest.ideas_left.length ? `<p><strong>Ideas left for you:</strong> ${latest.ideas_left.map(esc).join(" · ")}</p>` : ""}
+${latest.replacement ? `<p><strong>Instead:</strong> ${esc(latest.replacement)}</p>` : ""}
+${latest.chapters ? `<p><strong>Chapters to read:</strong> ${esc(latest.chapters)}</p>` : ""}
+${latest.summary ? `<details><summary>What the book holds (debrief)</summary><div class="md">${renderMarkdown(latest.summary)}</div></details>` : ""}
+${older.length ? `<details><summary>Earlier quizzes (${older.length})</summary><ul class="plain">${older.map((q) => `<li>${q.partial ? "Unfinished · " : ""}You already know ${esc(String(q.score))}/10${q.verdict ? ` → ${esc(verdictText(q.verdict))}` : ""} <span class="muted">· ${esc(q.created_at.slice(0, 10))}</span></li>`).join("")}</ul></details>` : ""}
+</section>`;
+	}
+
 	function actionsPanel(s: SourceDetail) {
 		const st = s.library_status;
 		const status =
@@ -170,11 +240,16 @@ ${s.editions.length ? `<section class="panel"><h2>Translations & editions</h2><u
 		const how = [s.bought_format ? BUY_FORMAT_LABEL[s.bought_format as BuyFormat] : "", paid].filter(Boolean).join(", ");
 		const bought = s.bought_on ? ` · bought ${esc(s.bought_on)}${how ? ` (${esc(how)})` : ""}` : "";
 		const owned = s.owned_format ? ` · ${s.owned_format === "both" ? "physical + Kindle" : s.owned_format}` : "";
-		const asListed = { ...s, has_card: Boolean(card), summary_id: summaries[0]?.id ?? null, has_review: Boolean(s.review), timeless: card?.timeless ?? null, buy: card?.buy ?? null } as any;
+		const asListed = { ...s, has_card: Boolean(card), summary_id: summaries[0]?.id ?? null, has_review: Boolean(s.review), timeless: card?.timeless ?? null, buy: card?.buy ?? null, quality: card?.quality ?? null, fit: card?.fit ?? null, quiz_score: s.quizzes.find((q) => !q.partial)?.score ?? null } as any;
 		const main = rowActions(asListed, { back: `/book/${id}`, inline: true }).html;
 		const more = [
 			main.includes("Details") ? "" : `<a href="${esc(claudeLink(`/book-details ${s.title}${by}${card ? " — refresh the saved research" : ""}`))}" target="_blank" rel="noopener"${tip(card ? "refreshDetails" : "fullDetails")}>${card ? "Refresh details" : "Full details"}</a>`,
 			main.includes("ummary") ? "" : summaries.length ? `<a href="/summary/${summaries[0].id}"${tip("readSummary")}>Read summary</a>` : `<a href="${esc(claudeLink(`/book-summary ${s.title}${by}`))}" target="_blank" rel="noopener"${tip("summary")}>Long summary</a>`,
+			isQuizzable(s) && st !== "archived"
+				? s.quizzes[0]?.partial
+					? `<a href="${esc(claudeLink(`/book-quiz Continue my quiz on ${s.title}${by}`))}" target="_blank" rel="noopener"${tip("quiz")}>Continue quiz</a>`
+					: `<a href="${esc(claudeLink(`/book-quiz ${s.title}${by}`))}" target="_blank" rel="noopener"${tip("quiz")}>${s.quizzes.length ? "Retake quiz" : "Quiz me"}</a>`
+				: "",
 			main.includes("Discuss") || !["own", "finished", "given_away"].includes(st) ? "" : `<a href="${esc(claudeLink(`/book-discuss ${s.title}${by} — load my notes and past discussions, then ask me which chapter or topic.`))}" target="_blank" rel="noopener"${tip("discuss")}>Discuss</a>`,
 			["own", "reading", "finished"].includes(st) && s.owned_format !== "kindle" ? `<a href="/book/${id}/give?back=${back}"${tip("give")}>Give away</a>` : "",
 			st === "archived"
@@ -236,6 +311,23 @@ book.post("/book/:id/move", async (c) => {
 	const form = await c.req.formData();
 	await moveOnBuyList(c.env.DB, Number(c.req.param("id")), form.get("dir") === "down" ? "down" : "up");
 	return c.redirect(safeBack(form.get("back"), "/buy"), 303);
+});
+
+book.post("/book/:id/verdict", async (c) => {
+	const id = Number(c.req.param("id"));
+	const form = await c.req.formData();
+	const verdict = String(form.get("verdict") ?? "");
+	const how = String(form.get("how") ?? "");
+	if ((VERDICTS as readonly string[]).includes(verdict)) {
+		await setVerdict(c.env.DB, id, { verdict: verdict as Verdict, how: (VERDICT_HOWS as readonly string[]).includes(how) ? how : null, why: String(form.get("why") ?? "").trim() || null, by: "me" });
+	}
+	return c.redirect(`/book/${id}`, 303);
+});
+
+book.post("/book/:id/verdict/unlock", async (c) => {
+	const id = Number(c.req.param("id"));
+	await unlockVerdict(c.env.DB, id);
+	return c.redirect(`/book/${id}`, 303);
 });
 
 book.post("/book/:id/hide-featured", async (c) => {

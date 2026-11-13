@@ -5,7 +5,7 @@ description: Book Hub book details. Use when the user names one or more specific
 
 # Book Hub · Book details
 
-1. Call the Book Hub connector: `get_rules` with names `["book-details", "honesty", "output-format", "ranking", "timeless-nonfiction", "fiction-taste", "buy-decision", "trusted-readers", "research-reuse", "connector-guide", "tags"]`.
+1. Call the Book Hub connector: `get_rules` with flow `"details"` (it returns every rule this command needs).
 2. Follow the **book-details** rule exactly. If the request is really a topic or "books like X", follow the **recommendations** rule instead.
 3. End with the Book Hub links. No follow-up questions.
 

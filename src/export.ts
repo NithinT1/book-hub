@@ -53,8 +53,10 @@ export async function buildMarkdownExport(db: D1Database): Promise<string> {
 			].filter(Boolean);
 			out.push(`### ${s.title}`, bits.join(" · "));
 			if (s.one_liner) out.push(`- **What it is:** ${s.one_liner}`);
+			if (s.verdict) out.push(`- **Verdict:** ${s.verdict.replace(/_/g, " ")}${s.verdict_how ? ` (${s.verdict_how.replace(/_/g, " ")})` : ""}${s.verdict_by === "me" ? " — my own" : ""}${s.verdict_why ? ` — ${s.verdict_why}` : ""}`);
 			if (research.card?.timeless) out.push(`- **Timeless:** ${research.card.timeless.replace(/_/g, " ")}`);
-			if (research.card?.buy) out.push(`- **Buy:** ${research.card.buy.replace(/_/g, " ")}`);
+			if (research.card?.quality != null) out.push(`- **Quality:** ${research.card.quality}/10${research.card.quality_tier ? ` (${research.card.quality_tier})` : ""}`);
+			if (research.card?.fit != null) out.push(`- **Fit:** ${research.card.fit}/10${research.card.fit_reason ? ` — ${research.card.fit_reason}` : ""}`);
 			for (const e of editionsBy.get(s.id) ?? []) out.push(`- **Edition:** ${e.label}${e.translator ? ` (tr. ${e.translator})` : ""}${e.owned ? " — I own this" : ""}${e.notes ? ` — ${e.notes}` : ""}`);
 			for (const n of (notesBy.get(s.id) ?? []).filter((n) => n.kind === "note")) out.push(`- **Note (${n.created_at.slice(0, 10)}${n.locator ? `, ${n.locator}` : ""}):** ${n.text.replace(/\n+/g, " ")}`);
 			const review = (notesBy.get(s.id) ?? []).find((n) => n.kind === "review");
@@ -75,7 +77,7 @@ export async function buildMarkdownExport(db: D1Database): Promise<string> {
 }
 
 export async function buildJsonExport(db: D1Database) {
-	const tables = ["sources", "series", "source_tags", "source_aliases", "source_ids", "editions", "facts", "cards", "requests", "appearances", "notes", "discussions", "summaries", "rules", "rules_history", "feedback", "test_runs"];
+	const tables = ["sources", "series", "source_tags", "source_aliases", "source_ids", "editions", "facts", "cards", "requests", "appearances", "notes", "discussions", "summaries", "rules", "rules_history", "feedback", "test_runs", "verdict_history", "quizzes", "reference_scores", "settings"];
 	const results = await db.batch(tables.map((t) => db.prepare(`SELECT * FROM ${t}`)));
 	return Object.fromEntries(tables.map((t, i) => [t, results[i].results]));
 }

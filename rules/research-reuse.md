@@ -10,6 +10,9 @@ Before researching a book, call `get_source` (or `lookup_book`). It returns the 
 | Price | 30 days |
 | Amazon / Goodreads ratings | 90 days |
 | Endorsements | 365 days |
+| Quality and Timeless | 180 days (with the card) |
+| Fit | until the reader edits their profile |
+| Verdict | until its inputs change (verdict rule) |
 
 - When reusing, show the date: "price checked 12 days ago".
 - When refreshing, save the new values with `save_facts`, and the updated card with `save_card`.

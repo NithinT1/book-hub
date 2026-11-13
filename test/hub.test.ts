@@ -23,7 +23,7 @@ async function book(title: string, extra = {}) {
 
 beforeEach(async () => {
 	cookie = (await createSessionCookie("owner", env.COOKIE_ENCRYPTION_KEY)).split(";")[0];
-	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "sources", "rules_history", "rules"]) await db.prepare(`DELETE FROM ${t}`).run();
+	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "verdict_history", "quizzes", "sources", "rules_history", "rules"]) await db.prepare(`DELETE FROM ${t}`).run();
 });
 
 describe("library", () => {
@@ -96,14 +96,17 @@ describe("book page", () => {
 
 describe("rules pages", () => {
 	it("lists rules, saves a new version, and restores an old one", async () => {
-		expect(await (await get("/rules")).text()).toContain("Timeless test");
+		const all = await (await get("/rules")).text();
+		for (const label of ["About me as a reader", "How I judge books", "System rules", "Quality: non-fiction", "Non-fiction profile", "Flow: bookstore"]) expect(all).toContain(label);
 		await post("/rules/ranking", { body: "# Ranking v2\nprice never ranks" });
 		let [r] = await getRules(db, ["ranking"]);
 		expect(r).toMatchObject({ version: 2, title: "Ranking v2" });
-		const page = await (await get("/rules/ranking?saved=1")).text();
-		expect(page).toContain("<h1>Ranking v2</h1>");
-		expect(page).toContain("Version 1");
+		const page = await (await get("/rules/ranking?view=text&saved=1")).text();
+		expect(page).toContain("<h1>Ranking</h1>");
+		expect(page).toContain("<h2>Ranking v2</h2>");
 		expect(page).toContain("Saved.");
+		expect(page).toContain("A system rule");
+		expect(await (await get("/rules/ranking?view=history")).text()).toContain("Version 1");
 		await post("/rules/ranking/restore", { version: "1" });
 		[r] = await getRules(db, ["ranking"]);
 		expect(r.version).toBe(3);

@@ -105,6 +105,30 @@ describe("connector", () => {
 		const tools = list.result.tools.map((t: any) => t.name);
 		expect(tools.filter((n: string) => /rule|taste/.test(n) && n !== "get_rules")).toEqual([]); // the AI can only read rules
 
+		// v2.8: a skill asks for its flow and gets the whole set of rules it needs.
+		const store = await readJson(await call({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_rules", arguments: { flow: "store" } } }));
+		for (const name of ["store", "quality-nonfiction", "fit", "verdict", "nonfiction-profile", "buying-preferences", "honesty"]) expect(store.result.content[0].text).toContain(`rule: ${name} ·`);
+		expect(store.result.content[0].text).not.toContain("rule: discussion ·");
+
+		const id = JSON.parse(saved.result.content[0].text).source.id;
+		const card = (args: object) => call({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "save_card", arguments: { source_id: id, markdown: "card", ...args } } }).then(readJson);
+		expect((await card({ quality: 7.5, quality_tier: "strong", fit: 8, fit_label: "self", verdict: "read", verdict_how: "kindle" })).result.content[0].text).toBe(`Saved card for source #${id}.`);
+		await env.DB.prepare("UPDATE sources SET verdict_by = 'me' WHERE id = ?").bind(id).run();
+		expect((await card({ verdict: "skip" })).result.content[0].text).toContain("set their own Verdict (read); it was kept");
+
+		await env.DB.prepare("INSERT INTO reference_scores (title, author, score, tier) VALUES ('Via Tool', 'Someone Unique', 77, 'Strong')").run();
+		const look = await readJson(await call({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "lookup_book", arguments: { title: "Via Tool", author: "Someone Unique" } } }));
+		expect(JSON.parse(look.result.content[0].text).reference_score).toMatchObject({ quality: 7.7, tier: "Strong" });
+		await env.DB.prepare("DELETE FROM reference_scores").run();
+
+		// v2.9: the quiz flow and save_quiz.
+		expect(names).toContain("save_quiz");
+		const quizRules = await readJson(await call({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "get_rules", arguments: { flow: "quiz" } } }));
+		expect(quizRules.result.content[0].text).toContain("rule: quiz ·");
+		const quiz = await readJson(await call({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "save_quiz", arguments: { source_id: id, score: 3.2, outcome: "keep", verdict: "read", ideas: [{ idea: "An idea", core: true, result: "new" }] } } }));
+		expect(quiz.result.content[0].text).toContain("you already know 3.2/10");
+		expect((await env.DB.prepare("SELECT verdict, verdict_by FROM sources WHERE id = ?").bind(id).first())).toMatchObject({ verdict: "read", verdict_by: "quiz" });
+
 	});
 });
 

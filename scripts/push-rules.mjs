@@ -10,8 +10,9 @@ import { join } from "node:path";
 const args = process.argv.slice(2);
 const force = args.includes("--force");
 // Personal rules: every hub keeps its own (the files are only neutral starters). Never pushed — not even with
-// --all or --force — so a starter can't overwrite someone's taste. Edit them in the hub or with the taste interview.
-const PERSONAL = new Set(["fiction-taste", "nonfiction-taste", "trusted-readers", "buy-decision", "timeless-nonfiction", "tags"]);
+// --all or --force — so a starter can't overwrite someone's profile or their own way of judging books.
+// Edit them in the hub (Profile & settings).
+const PERSONAL = new Set(["fiction-profile", "nonfiction-profile", "trusted-readers", "buying-preferences", "quality-nonfiction", "quality-fiction", "fit", "verdict", "tags"]);
 import { readdirSync } from "node:fs";
 const names = args.includes("--all")
 	? readdirSync(new URL("../rules/", import.meta.url)).filter((f) => f.endsWith(".md")).map((f) => f.slice(0, -3))

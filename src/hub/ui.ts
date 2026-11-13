@@ -12,7 +12,20 @@ export type HubContext = Context<HubEnv>;
 
 export const TYPE_LABEL: Record<string, string> = { fiction: "Fiction", nonfiction: "Non-fiction", biography: "Biography", autobiography: "Autobiography" };
 export const KIND_LABEL: Record<string, string> = { book: "Book", paper: "Paper", article: "Article", blog: "Blog post", thread: "Thread", talk: "Talk", video: "Video", other: "Other" };
-export const TIMELESS_LABEL: Record<string, string> = { yes: "Timeless", no: "Not timeless", too_new_promising: "Too new — promising", too_new_not: "Too new — not", not_applicable: "Fiction" };
+export const TIMELESS_LABEL: Record<string, string> = { yes: "Timeless: yes", no: "Timeless: no", too_new_promising: "Too new: promising", too_new_not: "Too new: not", not_applicable: "Fiction" };
+export const VERDICT_LABEL: Record<string, string> = { read: "Read", read_parts: "Read parts", reread: "Reread", idea_only: "Idea only", practise: "Practise instead", bench: "Bench", skip: "Skip", not_sure: "Not sure" };
+export const QUIZ_OUTCOME_LABEL: Record<string, string> = { keep: "Quizzed: keep", skip: "Quizzed: skip", practise: "Quizzed: practise", info: "Quizzed" };
+/** Book Quiz is for idea books. */
+export const isQuizzable = (s: { type: string | null; kind: string }) => s.kind === "book" && s.type !== "fiction";
+export const HOW_LABEL: Record<string, string> = { first_hand: "first-hand", second_hand: "second-hand", kindle: "Kindle", modern_alternative: "modern alternative", borrow: "borrow" };
+export const FIT_LABEL: Record<string, string> = { general_self: "General + Self", self: "Self", general: "General", none: "" };
+export const TIER_LABEL: Record<string, string> = { core: "Core", strong: "Strong", good: "Good", edge: "Edge" };
+/** "Read · second-hand" */
+export const verdictText = (v: string | null, how?: string | null) => (v ? `${VERDICT_LABEL[v] ?? v}${how && HOW_LABEL[how] ? ` · ${HOW_LABEL[how]}` : ""}` : "");
+/** "8.3 · Strong" */
+export const qualityText = (q: number | null | undefined, tier?: string | null) => (q == null ? "" : `${Number(q).toFixed(1)}${tier && TIER_LABEL[tier] ? ` · ${TIER_LABEL[tier]}` : ""}`);
+/** "8 · Self" */
+export const fitText = (f: number | null | undefined, label?: string | null) => (f == null ? "" : `${Math.round(Number(f) * 10) / 10}${label && FIT_LABEL[label] ? ` · ${FIT_LABEL[label]}` : ""}`);
 export const BUY_LABEL: Record<string, string> = { first_hand: "Buy first-hand", second_hand: "Buy second-hand", kindle: "Kindle", summary: "Claude summary", skip: "Skip", not_sure: "Not sure" };
 export { ARCHIVE_LABEL, BUY_FORMAT_LABEL, STATUS_LABEL };
 
@@ -30,8 +43,8 @@ export type AiApp = keyof typeof AI_APPS;
 export const isAiApp = (v: unknown): v is AiApp => typeof v === "string" && v in AI_APPS;
 
 const AI_JS = `(()=>{const app=document.body.dataset.ai;if(!app||app==="claude")return;
-const RULE={"book-recs":"recommendations","book-details":"book-details","book-discuss":"discussion","book-summary":"summary","book-store":"store","book-shelf":"shelf","book-checkin":"checkin","book-hub-feedback":"connector-guide"};
-const plain=(q)=>{const m=q.match(/^\\/(book-[a-z-]+)\\s*([\\s\\S]*)$/);if(!m)return q;return "Book Hub request: "+(m[2]||"(ask me what I need)")+"\\n\\nUse my Book Hub connector: call get_rules first and follow the \\""+(RULE[m[1]]||"connector-guide")+"\\" rule (and connector-guide, honesty).";};
+const FLOW={"book-recs":"recs","book-details":"details","book-discuss":"discuss","book-summary":"summary","book-store":"store","book-shelf":"shelf","book-checkin":"checkin","book-quiz":"quiz"};
+const plain=(q)=>{const m=q.match(/^\\/(book-[a-z-]+)\\s*([\\s\\S]*)$/);if(!m)return q;const f=FLOW[m[1]];return "Book Hub request: "+(m[2]||"(ask me what I need)")+"\\n\\nUse my Book Hub connector: "+(f?"call get_rules with flow \\""+f+"\\" first and follow the rules it returns.":"save this with save_feedback.");};
 document.addEventListener("click",(e)=>{const a=e.target.closest('a[href^="https://claude.ai/new?q="]');if(!a)return;e.preventDefault();
 const q=plain(new URL(a.href).searchParams.get("q")||"");
 if(app==="chatgpt"){window.open("https://chatgpt.com/?q="+encodeURIComponent(q),"_blank","noopener");return;}
@@ -40,6 +53,7 @@ navigator.clipboard.writeText(q).then(()=>{const t=document.createElement("div")
 // ---- What each action does (hover tooltips) ----
 
 export const HELP = {
+	quiz: ["Book Quiz", "Opens your AI app with /book-quiz. About 5–10 minutes of questions on the book's core ideas, then \"You already know: X/10\" and a Verdict: skip it, read parts, read it, or practise instead. Saved here."],
 	recs: ["Recommend books", "Opens your AI app with /book-recs and your topic typed in. Claude reads your rules, picks up to 5 books fresh for the topic (fewer if fewer fit), labels any already in your hub, saves them to Discover and links back here."],
 	details: ["Book details", "Opens your AI app with /book-details. For one or more named books (or a link to a list): a full card, ranking and buy verdict. The research is saved, so asking again later is quick."],
 	store: ["At a book store", "Opens your AI app with /book-store. Send a photo or name of a book plus its price: you get buy-or-skip and the discount vs a new copy. Or send a rack photo: up to 5 books worth picking."],
@@ -109,7 +123,7 @@ const ICON = {
 	hide: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>`,
 };
 
-export type RowOptions = { hideFeatured?: boolean; back?: string; price?: string | null; reorder?: boolean; inline?: boolean };
+export type RowOptions = { hideFeatured?: boolean; back?: string; price?: string | null; reorder?: boolean; inline?: boolean; verdictNote?: boolean };
 
 const ACT_ICON: Record<string, string> = {
 	discuss: `<path d="M4 5h16v11H9l-5 4z"/>`,
@@ -149,13 +163,21 @@ export function rowActions(s: ListedSource, o: RowOptions = {}): { html: string;
 	const discuss = link(claudeLink(`/book-discuss ${s.title}${by} — load my notes and past discussions, then ask me which chapter or topic.`), "Discuss", "discuss", true);
 	const note = link(`/book/${s.id}?focus=note#notes`, "Add a note", "note");
 	const archive = link(`/book/${s.id}/archive?back=${backQ}`, "Archive", "archive");
+	// Book Quiz sits under ⋯ in lists, never as a button (the book page shows it in its quiet links instead).
+	const quiz = !o.inline && isQuizzable(s) && s.library_status !== "archived" ? link(claudeLink(`/book-quiz ${s.title}${by}`), s.quiz_score != null ? "Retake quiz" : "Quiz me", "quiz", true) : null;
 
 	let main: (Act | null)[] = [];
 	let extra: (Act | null)[] = [];
 	switch (s.library_status) {
 		case "none":
-			main = [form("buy", "Add to buy list", "buy"), summary];
-			extra = [details, archive];
+			// Idea only: the summary is the way in, so it leads.
+			if (s.verdict === "idea_only") {
+				main = [summary, form("buy", "Add to buy list", "buy")];
+				extra = [details, archive];
+			} else {
+				main = [form("buy", "Add to buy list", "buy"), summary];
+				extra = [details, archive];
+			}
 			break;
 		case "want_to_buy":
 			main = [link(`/book/${s.id}/bought?back=${backQ}`, "Bought", "bought"), summary];
@@ -180,7 +202,7 @@ export function rowActions(s: ListedSource, o: RowOptions = {}): { html: string;
 			break;
 	}
 	const buttons = main.filter((a): a is Act => Boolean(a)).map((a, i) => a(i === 0 ? "act primary" : "act"));
-	const rest = extra.filter((a): a is Act => Boolean(a));
+	const rest = [...extra, quiz].filter((a): a is Act => Boolean(a));
 	// On the book page there's room, so everything shows as buttons; in lists the rest sit under ⋯.
 	const more = !rest.length ? ""
 		: o.inline ? rest.map((a) => a("act")).join("")
@@ -203,9 +225,13 @@ export function bookRow(s: ListedSource, o: RowOptions = {}) {
 	const tags = [
 		s.most_featured ? `<span class="tag star">★ Most featured</span>` : "",
 		statusBadge(s),
+		s.verdict ? `<span class="tag buy">Verdict: ${esc(verdictText(s.verdict))}</span>` : "",
+		s.timeless && s.timeless !== "not_applicable" ? `<span class="tag${s.timeless === "yes" ? " ok" : ""}">${TIMELESS_LABEL[s.timeless] ?? esc(s.timeless)}</span>` : "",
+		s.quality != null ? `<span class="tag topic">Quality ${esc(qualityText(s.quality, s.quality_tier))}</span>` : "",
+		s.fit != null ? `<span class="tag live">Fit ${esc(fitText(s.fit, s.fit_label))}</span>` : "",
+		s.quiz_score != null ? `<span class="tag">You know ${esc(String(s.quiz_score))}/10</span>` : "",
 		s.kind !== "book" ? `<span class="tag">${KIND_LABEL[s.kind]}</span>` : "",
 		s.type ? `<span class="tag">${TYPE_LABEL[s.type]}</span>` : "",
-		s.timeless && s.timeless !== "not_applicable" ? `<span class="tag">${TIMELESS_LABEL[s.timeless] ?? esc(s.timeless)}</span>` : "",
 		s.rating != null ? `<span class="tag">★ ${s.rating}/10</span>` : "",
 		s.appearance_count ? `<span class="tag">Featured ${s.appearance_count}×</span>` : "",
 		// Plain labels: a link inside the row's own link is invalid HTML and breaks the layout.
@@ -220,7 +246,13 @@ export function bookRow(s: ListedSource, o: RowOptions = {}) {
   <strong>${!ranked && s.library_status === "want_to_buy" && s.buy_rank ? `${s.buy_rank}. ` : ""}${esc(s.title)}</strong>
   <span class="muted">${esc(s.authors.join(", ") || "Author unknown")}${s.year ? ` · ${yearText(s.year)}` : ""}${o.price ? ` · ${esc(o.price)}` : ""}${s.library_status === "want_to_buy" && s.buy_format ? ` · prefer ${esc(BUY_FORMAT_LABEL[s.buy_format as BuyFormat])}` : ""}</span>
   ${s.one_liner ? `<span class="one-liner">${esc(s.one_liner)}</span>` : ""}
+  ${o.verdictNote && verdictChangedSinceListed(s) ? `<span class="warn-line">Verdict now ${esc(verdictText(s.verdict))}${s.verdict_why ? `: ${esc(s.verdict_why)}` : ""}</span>` : ""}
   <span class="tags">${tags}</span></span></a>${actions ? `<div class="row-actions">${actions}</div>` : ""}</li>`;
+}
+
+/** On the Buy list: the Verdict moved away from reading after the book was added. The book itself never moves. */
+function verdictChangedSinceListed(s: ListedSource) {
+	return s.library_status === "want_to_buy" && !!s.verdict && !["read", "read_parts", "reread"].includes(s.verdict) && !!s.verdict_at && (!s.status_changed_at || s.verdict_at > s.status_changed_at);
 }
 
 export function list(rows: string[], empty: string) {
@@ -257,7 +289,7 @@ const NAV_ICON: Record<Tab, string> = {
 	home: `<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>`,
 	buy: `<path d="M6 7h15l-2 9H8zM6 7L5 4H2M9 20a1 1 0 100-2 1 1 0 000 2zm9 0a1 1 0 100-2 1 1 0 000 2z"/>`,
 	shelf: `<path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4 1-3 14-4-1z"/>`,
-	discover: `<path d="M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5"/>`,
+	discover: `<path d="M12 21a9 9 0 100-18 9 9 0 000 18zM15.5 8.5l-2 5-5 2 2-5z"/>`, // a compass: the magnifier is search
 	notes: `<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/>`,
 	more: `<path d="M5 12h.01M12 12h.01M19 12h.01"/>`,
 };
@@ -266,7 +298,7 @@ const NAV_ICON: Record<Tab, string> = {
  * Every page: logo + tabs, then a page header — title on the left, that page's actions on the right (one
  * primary, the rest secondary) — then the body.
  */
-export function layout(c: HubContext, active: Tab, title: string, body: string, opts: { h1?: boolean; actions?: string } = {}) {
+export function layout(c: HubContext, active: Tab | null, title: string, body: string, opts: { h1?: boolean; actions?: string; search?: boolean } = {}) {
 	// A book's life left to right, with Home in the centre; the rest lives behind the ☰ menu.
 	const tabs: [Tab, string, string][] = [
 		["discover", "/discover", "Discover"],
@@ -284,7 +316,9 @@ export function layout(c: HubContext, active: Tab, title: string, body: string, 
 	return page(
 		title === "Home" ? "Book Hub" : `${title} · Book Hub`,
 		`<header class="top"><a class="brand" href="/">${LOGO}<span>Book Hub</span></a><nav class="tabs">${nav}</nav>
-<a class="menu-button" href="/more" aria-label="Profile and settings" title="Profile & settings"${active === "more" ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a></header>
+<div class="top-icons"><a class="search-button" href="/search" aria-label="Search your books" title="Search your books (press /)"${opts.search ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
+<a class="menu-button" href="/more" aria-label="Profile and settings" title="Profile & settings"${active === "more" ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a></div>
+${opts.search ? "" : `<form class="searchbar" method="get" action="/search" role="search" hidden><input type="search" name="q" placeholder="Search your books: title, author, tag…" aria-label="Search your books" autocomplete="off"><button class="btn">Search</button></form>`}</header>
 <main>${opts.h1 === false ? "" : `<div class="page-head"><h1>${esc(title)}</h1>${opts.actions ? `<div class="page-actions">${opts.actions}</div>` : ""}</div>`}${body}</main>`,
 		c.get("aiApp") ?? "claude",
 	);
@@ -294,8 +328,15 @@ export function page(title: string, body: string, aiApp: AiApp = "claude") {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(title)}</title><meta name="robots" content="noindex"><meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO.replace('width="28" height="28" ', 'xmlns="http://www.w3.org/2000/svg" '))}">
-<style>${CSS}</style></head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${AI_JS}</script></body></html>`;
+<style>${CSS}</style></head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${SEARCH_JS}${AI_JS}</script></body></html>`;
 }
+
+// Search: the 🔍 in the top bar opens a search field under it (no JS: it goes to the search page). "/" opens it too.
+const SEARCH_JS = `(()=>{const b=document.querySelector(".search-button"),f=document.querySelector(".searchbar");if(!b||!f)return;const i=f.querySelector("input");
+const open=()=>{f.hidden=false;b.setAttribute("aria-expanded","true");i.focus()};const close=()=>{f.hidden=true;b.setAttribute("aria-expanded","false")};
+b.addEventListener("click",(e)=>{e.preventDefault();f.hidden?open():close()});
+i.addEventListener("keydown",(e)=>{if(e.key==="Escape")close()});
+document.addEventListener("keydown",(e)=>{if(e.key!=="/"||e.metaKey||e.ctrlKey||e.altKey)return;const t=e.target;if(t.closest&&t.closest("input,textarea,select,[contenteditable]"))return;e.preventDefault();open()});})();`;
 
 // Dropdowns (filters, ⋯ menus): one open at a time; click outside or Esc closes them.
 const MENUS_JS = `const ds=()=>[...document.querySelectorAll("details.multi,details.more-menu")];
@@ -310,7 +351,9 @@ a{color:var(--ink);text-decoration-color:#b9bbc1;text-underline-offset:2px}h1{fo
 .top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:8px max(16px,calc((100% - 900px)/2))}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;white-space:nowrap;padding-right:20px;border-right:1px solid var(--line)}
 .tabs{display:flex;gap:2px;flex:1}
-.menu-button{margin-left:auto;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.menu-button:hover,.menu-button[aria-current]{background:var(--soft)}.tabs a{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--muted);padding:6px 10px;border-radius:8px;white-space:nowrap}
+.top-icons{margin-left:auto;display:flex;align-items:center;gap:4px}.search-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.search-button:hover,.search-button[aria-current],.search-button[aria-expanded="true"]{background:var(--soft)}
+.top{flex-wrap:wrap;row-gap:6px}.searchbar{flex:1 0 100%;display:flex;gap:8px;padding:2px 0 6px}[hidden]{display:none!important}.searchbar input{flex:1;min-width:0}
+.menu-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.menu-button:hover,.menu-button[aria-current]{background:var(--soft)}.tabs a{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--muted);padding:6px 10px;border-radius:8px;white-space:nowrap}
 .tabs a[aria-current]{background:var(--soft);color:var(--ink);font-weight:600}.tabs svg{display:none}
 main{max-width:900px;margin:0 auto;padding:12px 16px 96px}
 .muted{color:var(--muted);font-size:.9rem;font-weight:400}.empty{padding:20px;background:var(--soft);border-radius:12px;color:var(--muted)}
@@ -355,7 +398,37 @@ details.more-menu{position:relative;border:0;padding:0}.more-menu summary{list-s
 .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .editor{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin:8px 0}
 details{border-top:1px solid var(--line);padding:8px 0}summary{cursor:pointer}details .pre{background:var(--soft);padding:10px;border-radius:8px;margin:8px 0;font-size:.9rem}
-.notice{background:#e8f5ec;color:var(--ok);padding:8px 12px;border-radius:8px}.warn{background:#fff4d6;color:var(--star);padding:8px 12px;border-radius:8px}
+.notice{background:#e8f5ec;color:var(--ok);padding:8px 12px;border-radius:8px}.warn-line{font-size:.85rem;color:var(--star)}
+.group{margin:18px 0}.group>h2{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.group>p{margin:-4px 0 8px}
+.items{list-style:none;padding:0;margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}.items li+li{border-top:1px solid var(--line)}
+.item{display:flex;align-items:center;gap:12px;padding:12px 14px;color:var(--ink);text-decoration:none}a.item:hover{background:var(--soft)}
+.item .what{flex:1;min-width:0;display:flex;flex-direction:column}.item .tag{flex:none}.chev{flex:none;color:var(--muted)}
+.group.danger .items{border-color:#f0c4bf}.group.danger>h2{color:var(--danger)}
+.crumbs{font-size:.88rem;margin:4px 0 0;color:var(--muted)}.crumbs a{color:var(--muted)}.rule-head{margin:2px 0}.used{font-size:.88rem;color:var(--muted);margin:4px 0 10px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.seg a{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);font-size:.9rem}.seg a[aria-current]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.section-title{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}.section-title h2{margin:0}
+.hint{font-size:.85rem;color:var(--muted);margin:4px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{position:relative;display:inline-flex;align-items:center;border:1px solid var(--edge);border-radius:999px;padding:4px 11px;font:inherit;font-size:.88rem;background:#fff;color:var(--ink);cursor:pointer}
+.chip input{position:absolute;opacity:0;pointer-events:none}.chip:has(input:checked),.chip.tri[data-state="in"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:2px}.chip.tri[data-state="out"]{border-color:var(--danger);color:var(--danger);text-decoration:line-through}
+.add-input{margin:4px 0 0;width:min(100%,360px)}.profile-form textarea{margin-top:2px}.profile-form select{margin:4px 0}
+.weights{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) 72px;gap:8px 12px;align-items:center;margin:8px 0}.weights .name{font-weight:600}.weights input{width:72px;text-align:center}
+@media (max-width:560px){.weights{grid-template-columns:minmax(0,1fr) 72px}.weights .muted{display:none}}
+.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:4px 0 12px}
+.cell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cell .k{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}.cell .v{font-weight:700;font-size:1rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.cell .why{font-size:.8rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.cell.verdict{border-color:var(--ink)}
+@media (max-width:700px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.cell.verdict{grid-column:1/-1;order:-1}}
+.factors{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:4px;font-variant-numeric:tabular-nums}.factors div{background:var(--soft);border-radius:6px;padding:4px 8px;font-size:.8rem;display:flex;justify-content:space-between;gap:6px}
+.verdict-form{margin-top:12px}
+.setup{border:1px solid var(--edge);border-radius:12px;padding:14px 16px;margin:12px 0}.setup-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}.setup-head h2{margin:0}
+.setup ol{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:8px}.setup li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:var(--soft)}
+.setup .num{flex:none;width:26px;height:26px;border-radius:999px;border:1px solid var(--edge);background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700}
+.setup li.done .num{background:var(--ok);border-color:var(--ok);color:#fff}.setup .what{flex:1;min-width:0;display:flex;flex-direction:column}
+.progress{height:6px;border-radius:999px;background:var(--soft);overflow:hidden;margin:8px 0 0}.progress span{display:block;height:100%;background:var(--ok)}
+.pointer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;background:var(--soft);border-radius:10px;padding:10px 14px;margin:6px 0 10px}.pointer p{margin:0;flex:1 1 260px}.pointer-btns{display:flex;gap:6px}.pointer-btns form{margin:0}
+.notice-line{background:#fff4d6;color:var(--star);padding:8px 12px;border-radius:8px;font-size:.92rem}.notice-line a{color:var(--star)}.warn{background:#fff4d6;color:var(--star);padding:8px 12px;border-radius:8px}
 .md{overflow-wrap:anywhere}.card-md p{margin:0 0 10px}.md h2,.md h3,.md h4,.md h5{margin:18px 0 8px}.md ul,.md ol{padding-left:1.3rem}.md li.sub{margin-left:1rem}
 .md blockquote{margin:10px 0;padding:6px 12px;border-left:3px solid var(--line);color:#444}.md pre{background:var(--soft);padding:10px;border-radius:8px;overflow-x:auto}
 .table-wrap{overflow-x:auto;margin:8px 0}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{background:var(--soft)}

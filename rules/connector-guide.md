@@ -2,8 +2,6 @@
 
 Read this before saving anything.
 
-For **Fit** scores, read the user's taste: `fiction-taste` for fiction, `nonfiction-taste` for non-fiction (call `get_rules` for them if you haven't). Taste sharpens fit only; it never changes the timeless verdict, honesty or evidence rules.
-
 ## Identifying a book
 1. Clean up what the user typed first: fix spelling ("Harry Poter" → Harry Potter, "Pride and Predjudice" → Pride and Prejudice), split "author - title", and expand short forms ("LOTR" → The Lord of the Rings by J.R.R. Tolkien).
 2. If a title could be more than one book ("The Prince", "Rebecca"), ask which one before saving. Never guess silently.

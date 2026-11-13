@@ -52,9 +52,20 @@ export type Source = {
 	hide_from_featured: number;
 	series_id: number | null;
 	series_position: number | null;
+	verdict: Verdict | null;
+	verdict_how: string | null;
+	verdict_why: string | null;
+	verdict_by: "ai" | "me" | "quiz" | null;
+	verdict_at: string | null;
 	created_at: string;
 	updated_at: string;
 };
+
+export const VERDICTS = ["read", "read_parts", "reread", "idea_only", "practise", "bench", "skip", "not_sure"] as const;
+export type Verdict = (typeof VERDICTS)[number];
+export const VERDICT_HOWS = ["first_hand", "second_hand", "kindle", "modern_alternative", "borrow"] as const;
+export const FIT_LABELS = ["general_self", "self", "general", "none"] as const;
+export const TIERS = ["core", "strong", "good", "edge"] as const;
 
 export type EditionInput = {
 	label: string;
@@ -297,6 +308,11 @@ export type SourceDetail = Source & {
 	came_up_for: string | null;
 	most_featured: boolean;
 	research: Awaited<ReturnType<typeof getResearch>>;
+	verdict_locked: boolean;
+	verdict_history: Awaited<ReturnType<typeof getVerdictHistory>>;
+	/** Newest first; the first one counts. */
+	quizzes: Quiz[];
+	reference_score: ReferenceScore | null;
 	aliases: string[];
 	editions: any[];
 	notes: { id: number; text: string; kind: string; locator: string | null; created_at: string }[];
@@ -323,7 +339,14 @@ export async function getSource(db: D1Database, id: number): Promise<SourceDetai
 		db.prepare("SELECT r.input FROM appearances a JOIN requests r ON r.id = a.request_id WHERE a.source_id = ? ORDER BY r.id LIMIT 1").bind(id),
 	]);
 	const c = (counts.results[0] ?? {}) as any;
-	const [research, featured, series] = await Promise.all([getResearch(db, id), mostFeaturedIds(db), getSeriesFor(db, source.series_id)]);
+	const [research, featured, series, verdictHistory, reference, quizzes] = await Promise.all([
+		getResearch(db, id),
+		mostFeaturedIds(db),
+		getSeriesFor(db, source.series_id),
+		getVerdictHistory(db, id),
+		findReferenceScore(db, source.title, source.authors[0]),
+		getQuizzes(db, id),
+	]);
 	const allNotes = notes.results as any[];
 	return {
 		...source,
@@ -334,6 +357,10 @@ export async function getSource(db: D1Database, id: number): Promise<SourceDetai
 		came_up_for: (firstRequest.results[0] as any)?.input ?? null,
 		most_featured: featured.has(id),
 		research,
+		verdict_locked: source.verdict_by === "me" || source.verdict_by === "quiz",
+		verdict_history: verdictHistory,
+		quizzes,
+		reference_score: reference,
 		aliases: (aliases.results as any[]).map((a) => a.alias),
 		editions: editions.results as any[],
 		notes: allNotes.filter((n) => n.kind !== "review"),
@@ -357,6 +384,14 @@ export async function listSources(
 		kinds?: string[];
 		tags?: string[];
 		timelessAny?: string[];
+		verdictAny?: string[];
+		fitLabelAny?: string[];
+		/** Discover hides Skip unless asked for. */
+		hideSkip?: boolean;
+		/** Only books whose Verdict changed in the last 30 days. */
+		verdictChanged?: boolean;
+		/** By latest quiz: keep, skip, practise, or "none" (never quizzed). */
+		quizAny?: string[];
 		offset?: number;
 		kind?: Source["kind"];
 		type?: Source["type"];
@@ -382,6 +417,20 @@ export async function listSources(
 	anyOf("s.type", opts.types);
 	anyOf("s.kind", opts.kinds);
 	anyOf("json_extract(c.card, '$.timeless')", opts.timelessAny);
+	anyOf("s.verdict", opts.verdictAny);
+	anyOf("json_extract(c.card, '$.fit_label')", opts.fitLabelAny);
+	if (opts.hideSkip && !opts.verdictAny?.includes("skip") && !opts.quizAny?.includes("skip")) {
+		where.push("(s.verdict IS NULL OR s.verdict != 'skip')");
+		where.push(`s.id NOT IN (SELECT q.source_id FROM quizzes q WHERE q.id = ${LATEST_QUIZ} AND q.partial = 0 AND q.outcome = 'skip')`);
+	}
+	if (opts.quizAny?.length) {
+		const outcomes = opts.quizAny.filter((v) => v !== "none");
+		const parts = [];
+		if (outcomes.length) (parts.push(`s.id IN (SELECT q.source_id FROM quizzes q WHERE q.id = ${LATEST_QUIZ} AND q.partial = 0 AND q.outcome IN (${outcomes.map(() => "?").join(",")}))`), vals.push(...outcomes));
+		if (opts.quizAny.includes("none")) parts.push("s.id NOT IN (SELECT source_id FROM quizzes WHERE partial = 0)");
+		where.push(`(${parts.join(" OR ")})`);
+	}
+	if (opts.verdictChanged) where.push(`s.id IN (${VERDICT_CHANGED_SQL})`);
 	if (opts.tags?.length) (where.push(`s.id IN (SELECT source_id FROM source_tags WHERE tag IN (${opts.tags.map(() => "?").join(",")}))`), vals.push(...opts.tags));
 	if (opts.query) {
 		where.push("(s.title LIKE ? OR s.authors LIKE ? OR s.one_liner LIKE ? OR s.id IN (SELECT source_id FROM source_aliases WHERE alias LIKE ?) OR s.id IN (SELECT source_id FROM source_tags WHERE tag LIKE ?))");
@@ -392,6 +441,9 @@ export async function listSources(
 		.prepare(
 			`SELECT s.*, (SELECT COUNT(*) FROM appearances a WHERE a.source_id = s.id AND a.origin IN ${COUNTED_ORIGINS}) AS appearance_count,
 			 json_extract(c.card, '$.timeless') AS timeless, json_extract(c.card, '$.buy') AS buy,
+			 json_extract(c.card, '$.quality') AS quality, json_extract(c.card, '$.quality_tier') AS quality_tier,
+			 json_extract(c.card, '$.fit') AS fit, json_extract(c.card, '$.fit_label') AS fit_label,
+			 (SELECT q.score FROM quizzes q WHERE q.source_id = s.id AND q.partial = 0 ORDER BY q.id DESC LIMIT 1) AS quiz_score,
 			 (SELECT group_concat(tag, '|') FROM source_tags t WHERE t.source_id = s.id) AS tag_list,
 			 (SELECT r.input FROM appearances a JOIN requests r ON r.id = a.request_id WHERE a.source_id = s.id ORDER BY r.id LIMIT 1) AS came_up_for,
 			 (SELECT MAX(m.id) FROM summaries m WHERE m.source_id = s.id) AS summary_id,
@@ -403,13 +455,18 @@ export async function listSources(
 		.all();
 	const featured = await mostFeaturedIds(db);
 	const rows: ListedSource[] = results.map((r: any) => {
-		const { tag_list, summary_id, has_review, has_card, ...row } = r;
+		const { tag_list, summary_id, has_review, has_card, quality, quality_tier, fit, fit_label, quiz_score, ...row } = r;
 		return {
 			...parseSource(row),
 			appearance_count: r.appearance_count,
 			most_featured: featured.has(r.id),
 			timeless: r.timeless,
 			buy: r.buy,
+			quality: quality ?? null,
+			quality_tier: quality_tier ?? null,
+			fit: fit ?? null,
+			fit_label: fit_label ?? null,
+			quiz_score: quiz_score ?? null,
 			tags: tag_list ? String(tag_list).split("|") : [],
 			came_up_for: r.came_up_for,
 			summary_id: summary_id ?? null,
@@ -418,12 +475,16 @@ export async function listSources(
 		};
 	});
 	const kept = opts.mostFeatured ? rows.filter((r) => r.most_featured) : rows;
-	return opts.sort === "best" ? kept.sort(bestFirst) : kept;
+	if (opts.sort === "best") return kept.sort(bestFirst);
+	if (opts.sort === "quality") return kept.sort((a, b) => (b.quality ?? -1) - (a.quality ?? -1) || bestFirst(a, b));
+	if (opts.sort === "fit") return kept.sort((a, b) => (b.fit ?? -1) - (a.fit ?? -1) || bestFirst(a, b));
+	return kept;
 }
 
 /**
  * Discover's default order. Books you haven't acted on first; Reading and Buy list last (already decided).
- * Within each group: ★ keeps coming up → timeless → too new but promising → most-featured count → most recent.
+ * Within each group: ★ keeps coming up → Quality × Fit → timeless → most-featured count → most recent.
+ * Books without scores yet (older cards) fall back on timeless.
  */
 const STATUS_ORDER: Record<string, number> = { none: 0, own: 1, finished: 2, given_away: 3, archived: 4, reading: 5, want_to_buy: 6 };
 const TIMELESS_ORDER: Record<string, number> = { yes: 0, too_new_promising: 1, not_applicable: 2, too_new_not: 4, no: 5 };
@@ -431,10 +492,16 @@ function bestFirst(a: ListedSource, b: ListedSource) {
 	return (
 		(STATUS_ORDER[a.library_status] ?? 9) - (STATUS_ORDER[b.library_status] ?? 9) ||
 		Number(b.most_featured) - Number(a.most_featured) ||
+		qualityTimesFit(b) - qualityTimesFit(a) ||
 		(TIMELESS_ORDER[a.timeless ?? ""] ?? 3) - (TIMELESS_ORDER[b.timeless ?? ""] ?? 3) ||
 		b.appearance_count - a.appearance_count ||
 		b.updated_at.localeCompare(a.updated_at)
 	);
+}
+
+/** Quality × Fit, 0–100; a missing Fit counts as neutral (5). Unscored books get -1 so they sort after scored ones. */
+export function qualityTimesFit(s: { quality: number | null; fit: number | null }) {
+	return s.quality == null ? -1 : s.quality * (s.fit ?? 5);
 }
 
 export type ListedSource = Source & {
@@ -442,6 +509,11 @@ export type ListedSource = Source & {
 	most_featured: boolean;
 	timeless: string | null;
 	buy: string | null;
+	quality: number | null;
+	quality_tier: string | null;
+	fit: number | null;
+	fit_label: string | null;
+	quiz_score: number | null;
 	tags: string[];
 	came_up_for: string | null;
 	summary_id: number | null;
@@ -456,6 +528,8 @@ const SORTS = {
 		WHEN 'archived' THEN 4 WHEN 'given_away' THEN 5 ELSE 6 END, s.status_changed_at DESC, s.title COLLATE NOCASE`,
 	buy: "s.buy_rank IS NULL, s.buy_rank, s.title COLLATE NOCASE",
 	best: "s.updated_at DESC, s.id DESC", // re-sorted in code by bestFirst
+	quality: "s.updated_at DESC, s.id DESC", // re-sorted in code
+	fit: "s.updated_at DESC, s.id DESC", // re-sorted in code
 	recent: "s.updated_at DESC, s.id DESC",
 	title: "s.title COLLATE NOCASE",
 	year: "s.year IS NULL, s.year DESC",
@@ -563,7 +637,7 @@ export async function deleteNote(db: D1Database, noteId: number) {
 
 /** Deletes a source and everything attached to it. Hub only. */
 export async function deleteSource(db: D1Database, id: number) {
-	const tables = ["source_aliases", "source_ids", "source_tags", "facts", "cards", "appearances", "notes", "discussions", "summaries", "editions"];
+	const tables = ["source_aliases", "source_ids", "source_tags", "facts", "cards", "appearances", "notes", "discussions", "summaries", "editions", "verdict_history", "quizzes"];
 	await db.batch([...tables.map((t) => db.prepare(`DELETE FROM ${t} WHERE source_id = ?`).bind(id)), db.prepare("DELETE FROM sources WHERE id = ?").bind(id)]);
 }
 
@@ -576,20 +650,189 @@ export async function getRuleHistory(db: D1Database, name: string) {
 
 export type CardInput = {
 	timeless?: "yes" | "no" | "too_new_promising" | "too_new_not" | "not_applicable";
+	/** Before v2.8 the card carried a buy decision; it still maps to a Verdict when no verdict is given. */
 	buy?: "first_hand" | "second_hand" | "kindle" | "summary" | "skip" | "not_sure";
 	confidence?: "high" | "medium" | "low";
 	core_idea?: string;
+	quality?: number;
+	quality_tier?: (typeof TIERS)[number];
+	quality_factors?: Record<string, number>;
+	belief?: string;
+	mistake?: string;
+	critic?: string;
+	fit?: number;
+	fit_label?: (typeof FIT_LABELS)[number];
+	fit_reason?: string;
+	verdict?: Verdict;
+	verdict_how?: (typeof VERDICT_HOWS)[number];
+	verdict_why?: string;
 	markdown: string;
 };
 
+const BUY_TO_VERDICT: Record<string, [Verdict, string | null]> = {
+	first_hand: ["read", "first_hand"], second_hand: ["read", "second_hand"], kindle: ["read", "kindle"],
+	summary: ["idea_only", null], skip: ["skip", null], not_sure: ["not_sure", null],
+};
+
+/** Saves the card; its Verdict goes to the book (unless the reader set their own). Returns what happened to the Verdict. */
 export async function saveCard(db: D1Database, sourceId: number, card: CardInput) {
+	const { verdict, verdict_how, verdict_why, ...rest } = card;
 	await db
 		.prepare(
 			`INSERT INTO cards (source_id, card) VALUES (?, ?)
 			 ON CONFLICT (source_id) DO UPDATE SET card = excluded.card, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
 		)
-		.bind(sourceId, JSON.stringify(card))
+		.bind(sourceId, JSON.stringify(rest))
 		.run();
+	const fromBuy = !verdict && card.buy ? BUY_TO_VERDICT[card.buy] : undefined;
+	const v = verdict ?? fromBuy?.[0];
+	if (!v) return { verdict: "unchanged" as const };
+	return setVerdict(db, sourceId, { verdict: v, how: verdict_how ?? fromBuy?.[1] ?? null, why: verdict_why ?? null, by: "ai" });
+}
+
+// ---- Verdict -----------------------------------------------------------------
+
+/** A Verdict change in the last 30 days, set by the AI, that differs from the one before it. */
+const VERDICT_CHANGED_SQL = `SELECT h.source_id FROM verdict_history h WHERE h.set_by = 'ai' AND h.created_at >= strftime('%Y-%m-%dT%H:%M:%SZ','now','-30 days')
+	AND EXISTS (SELECT 1 FROM verdict_history p WHERE p.source_id = h.source_id AND p.id < h.id AND p.verdict != h.verdict)`;
+
+export async function countVerdictChanges(db: D1Database) {
+	return (await db.prepare(`SELECT COUNT(DISTINCT source_id) AS n FROM (${VERDICT_CHANGED_SQL})`).first<{ n: number }>())?.n ?? 0;
+}
+
+/**
+ * Sets a book's Verdict and records it in the history (only when something changed). The reader's own verdict
+ * ("me") is locked: the AI can't overwrite it. Never touches the book's status.
+ */
+export async function setVerdict(db: D1Database, sourceId: number, v: { verdict: Verdict; how?: string | null; why?: string | null; by: "ai" | "me" | "quiz" }) {
+	const cur = await db.prepare("SELECT verdict, verdict_how, verdict_why, verdict_by FROM sources WHERE id = ?").bind(sourceId).first<{ verdict: string | null; verdict_how: string | null; verdict_why: string | null; verdict_by: string | null }>();
+	if (!cur) return { verdict: "unchanged" as const };
+	// The reader's own verdict and a quiz result are locked against the AI; between those two, the newer wins.
+	if ((cur.verdict_by === "me" || cur.verdict_by === "quiz") && v.by === "ai") return { verdict: "locked" as const, current: cur.verdict, by: cur.verdict_by };
+	const how = v.verdict === "read" || v.verdict === "read_parts" || v.verdict === "reread" ? (v.how ?? null) : null;
+	const why = v.why?.trim().slice(0, 500) || null;
+	if (cur.verdict === v.verdict && cur.verdict_how === how && cur.verdict_why === why && cur.verdict_by === v.by) return { verdict: "unchanged" as const };
+	await db.batch([
+		db.prepare("UPDATE sources SET verdict = ?, verdict_how = ?, verdict_why = ?, verdict_by = ?, verdict_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?").bind(v.verdict, how, why, v.by, sourceId),
+		db.prepare("INSERT INTO verdict_history (source_id, verdict, how, why, set_by) VALUES (?, ?, ?, ?, ?)").bind(sourceId, v.verdict, how, why, v.by),
+	]);
+	return { verdict: cur.verdict && cur.verdict !== v.verdict ? ("changed" as const) : ("saved" as const), previous: cur.verdict };
+}
+
+/** The reader hands the Verdict back to the AI; the current value stays until the AI next decides. */
+export async function unlockVerdict(db: D1Database, sourceId: number) {
+	await db.prepare("UPDATE sources SET verdict_by = 'ai' WHERE id = ? AND verdict_by IN ('me', 'quiz')").bind(sourceId).run();
+}
+
+// ---- Book Quiz -----------------------------------------------------------------
+
+const LATEST_QUIZ = "(SELECT MAX(q2.id) FROM quizzes q2 WHERE q2.source_id = q.source_id)";
+export const QUIZ_OUTCOMES = ["keep", "skip", "practise", "info"] as const;
+export const IDEA_RESULTS = ["held", "known_not_lived", "partly", "new"] as const;
+
+export type QuizIdea = { idea: string; core?: boolean; result: (typeof IDEA_RESULTS)[number]; covered_by?: string; note?: string };
+export type QuizInput = {
+	score: number;
+	practice?: number;
+	mode?: "scan" | "deep";
+	partial?: boolean;
+	outcome?: (typeof QUIZ_OUTCOMES)[number];
+	verdict?: Verdict;
+	verdict_why?: string;
+	practice_tip?: string;
+	ideas: QuizIdea[];
+	ideas_left?: string[];
+	replacement?: string;
+	chapters?: string;
+	confidence?: "high" | "medium";
+	summary?: string;
+};
+export type Quiz = Omit<QuizInput, "ideas" | "ideas_left" | "partial"> & { id: number; source_id: number; partial: boolean; ideas: QuizIdea[]; ideas_left: string[]; created_at: string };
+
+/**
+ * Saves a quiz (history is kept; the newest counts). Progress is saved after every answer as one in-progress record
+ * per book: while the latest quiz is unfinished, each save (progress or the final result) updates that record instead
+ * of adding a row. A finished quiz with a Verdict sets and locks it, unless it only informs (outcome "info":
+ * biographies, wisdom texts, art books). An unfinished one never touches the Verdict. Never changes the book's status.
+ */
+export async function saveQuiz(db: D1Database, sourceId: number, q: QuizInput) {
+	const score = Math.max(0, Math.min(10, Math.round(q.score * 10) / 10));
+	const values = [
+		score, q.practice ?? null, q.mode ?? "scan", q.partial ? 1 : 0, q.partial ? null : (q.outcome ?? null), q.verdict ?? null, q.verdict_why ?? null,
+		q.practice_tip ?? null, JSON.stringify(q.ideas), JSON.stringify(q.ideas_left ?? []), q.replacement ?? null, q.chapters ?? null, q.confidence ?? null, q.summary ?? null,
+	];
+	const inProgress = await db.prepare("SELECT id FROM quizzes WHERE source_id = ? AND partial = 1 AND id = (SELECT MAX(id) FROM quizzes WHERE source_id = ?)").bind(sourceId, sourceId).first<{ id: number }>();
+	const row = inProgress
+		? await db
+				.prepare(
+					`UPDATE quizzes SET score = ?, practice = ?, mode = ?, partial = ?, outcome = ?, verdict = ?, verdict_why = ?, practice_tip = ?, ideas = ?, ideas_left = ?, replacement = ?,
+					 chapters = ?, confidence = ?, summary = ?, created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ? RETURNING id`,
+				)
+				.bind(...values, inProgress.id)
+				.first<{ id: number }>()
+		: await db
+				.prepare(
+					`INSERT INTO quizzes (source_id, score, practice, mode, partial, outcome, verdict, verdict_why, practice_tip, ideas, ideas_left, replacement, chapters, confidence, summary)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				)
+				.bind(sourceId, ...values)
+				.first<{ id: number }>();
+	let verdict: Awaited<ReturnType<typeof setVerdict>> | { verdict: "not_set" } = { verdict: "not_set" };
+	if (!q.partial && q.verdict && q.outcome !== "info") verdict = await setVerdict(db, sourceId, { verdict: q.verdict, why: q.verdict_why ?? `you already know ${score}/10`, by: "quiz" });
+	return { id: row!.id, score, verdict };
+}
+
+export async function getQuizzes(db: D1Database, sourceId: number): Promise<Quiz[]> {
+	const { results } = await db.prepare("SELECT * FROM quizzes WHERE source_id = ? ORDER BY id DESC LIMIT 20").bind(sourceId).all<any>();
+	return results.map(parseQuiz);
+}
+
+/** Books whose latest quiz was stopped midway: Home offers to continue them. */
+export async function unfinishedQuizzes(db: D1Database) {
+	const { results } = await db
+		.prepare(`SELECT q.*, s.title, s.authors FROM quizzes q JOIN sources s ON s.id = q.source_id WHERE q.partial = 1 AND q.id = ${LATEST_QUIZ} ORDER BY q.id DESC LIMIT 10`)
+		.all<any>();
+	return results.map((r) => ({ ...parseQuiz(r), title: r.title as string, authors: JSON.parse(r.authors ?? "[]") as string[] }));
+}
+
+function parseQuiz(r: any): Quiz {
+	return { ...r, partial: Boolean(r.partial), ideas: JSON.parse(r.ideas ?? "[]"), ideas_left: JSON.parse(r.ideas_left ?? "[]") };
+}
+
+export async function getVerdictHistory(db: D1Database, sourceId: number) {
+	const { results } = await db
+		.prepare("SELECT verdict, how, why, set_by, created_at FROM verdict_history WHERE source_id = ? ORDER BY id DESC LIMIT 20")
+		.bind(sourceId)
+		.all<{ verdict: string; how: string | null; why: string | null; set_by: string; created_at: string }>();
+	return results;
+}
+
+// ---- Reference scores (the reader's own saved quality scores) -----------------
+
+/** Imports fill only title, author and score; the keys are computed here, once, with the same matching as books. */
+async function ensureReferenceKeys(db: D1Database) {
+	const { results } = await db.prepare("SELECT id, title, author FROM reference_scores WHERE title_key = '' LIMIT 1000").all<{ id: number; title: string; author: string | null }>();
+	if (!results.length) return;
+	for (let i = 0; i < results.length; i += 100) {
+		await db.batch(results.slice(i, i + 100).map((r) => db.prepare("UPDATE reference_scores SET title_key = ?, author_key = ? WHERE id = ?").bind(titleKey(r.title) || "-", authorKey(r.author?.split(/,| and /)[0]), r.id)));
+	}
+}
+
+export type ReferenceScore = { title: string; author: string | null; score: number; quality: number; tier: string | null; factors: string | null; belief: string | null; mistake: string | null; confidence: string | null; note: string | null };
+
+export async function findReferenceScore(db: D1Database, title: string, author?: string | null): Promise<ReferenceScore | null> {
+	const any = await db.prepare("SELECT 1 FROM reference_scores LIMIT 1").first();
+	if (!any) return null;
+	await ensureReferenceKeys(db);
+	const tKey = titleKey(title);
+	const { results } = await db.prepare("SELECT id, title_key, author_key FROM reference_scores WHERE title_key = ?").bind(tKey).all<Candidate>();
+	if (!results.length) return null;
+	const m = bestMatch(tKey, authorKey(author), results);
+	const id = m.kind === "match" ? m.source.id : results.length === 1 && !author ? results[0].id : null;
+	if (!id) return null;
+	const r = await db.prepare("SELECT title, author, score, tier, factors, belief, mistake, confidence, note FROM reference_scores WHERE id = ?").bind(id).first<Omit<ReferenceScore, "quality">>();
+	// Scores are stored as imported (e.g. 0–100); quality is the same on Book Hub's 0–10 scale.
+	return r ? { ...r, quality: r.score > 10 ? Math.round(r.score) / 10 : r.score } : null;
 }
 
 export type FactInput = { field: string; value: string; link?: string; edition?: string; note?: string };
@@ -766,7 +1009,8 @@ export async function mergeSources(db: D1Database, fromId: number, intoId: numbe
 		db.prepare("INSERT OR IGNORE INTO cards (source_id, card, updated_at) SELECT ?, card, updated_at FROM cards WHERE source_id = ?").bind(intoId, fromId),
 		db.prepare("INSERT OR IGNORE INTO source_tags (source_id, tag) SELECT ?, tag FROM source_tags WHERE source_id = ?").bind(intoId, fromId),
 		db.prepare("UPDATE sources SET one_liner = COALESCE(one_liner, ?), rating = COALESCE(rating, ?), reread = COALESCE(reread, ?), series_id = COALESCE(series_id, ?), series_position = COALESCE(series_position, ?) WHERE id = ?").bind(from.one_liner, from.rating, from.reread, from.series_id, from.series_position, intoId),
-		...["editions", "facts", "notes", "discussions", "summaries"].map((t) => db.prepare(`UPDATE ${t} SET source_id = ? WHERE source_id = ?`).bind(intoId, fromId)),
+		db.prepare("UPDATE sources SET verdict = ?, verdict_how = ?, verdict_why = ?, verdict_by = ?, verdict_at = ? WHERE id = ? AND verdict IS NULL").bind(from.verdict, from.verdict_how, from.verdict_why, from.verdict_by, from.verdict_at, intoId),
+		...["editions", "facts", "notes", "discussions", "summaries", "verdict_history", "quizzes"].map((t) => db.prepare(`UPDATE ${t} SET source_id = ? WHERE source_id = ?`).bind(intoId, fromId)),
 	]);
 	await deleteSource(db, fromId);
 	return true;

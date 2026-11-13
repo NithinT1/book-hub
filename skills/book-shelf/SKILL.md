@@ -5,7 +5,7 @@ description: Book Hub — my own shelf. Use when the user shares photos of their
 
 # Book Hub · My shelf
 
-1. Call the Book Hub connector: `get_rules` with names `["shelf", "connector-guide", "tags", "timeless-nonfiction", "buy-decision"]`.
+1. Call the Book Hub connector: `get_rules` with flow `"shelf"` (it returns every rule this command needs).
 2. Follow the **shelf** rule: **catalogue** (list spines, skip what's already there, save only after the user says "save") or **give away** (a table of only the books that can go, with reasons and a price range).
 
 If Book Hub tools aren't available, say: "Book Hub isn't connected in this chat — tap + → Connectors → Book Hub."

@@ -182,7 +182,7 @@ Skills are short instructions that add commands like `/book-recs` to Claude.
 1. New chat in Claude: `/book-details The Hobbit`. You should get a card, and the book appears in your hub under **Discover**.
 2. **Phone:** open the Claude app (same account) and try `/book-recs short books that make you curious`. Connectors and skills carry over automatically.
 3. In the hub, open the book → **Add to buy list**. It shows on your **Buy list**.
-4. *Optional:* Profile & settings → **Your taste**.
+4. *Optional:* Profile & settings → **About me as a reader** (or the set-up card on Home).
 
 > 📱 **Tip:** on your phone, open your hub address in the browser → **Share → Add to Home Screen**. It then opens like an app.
 

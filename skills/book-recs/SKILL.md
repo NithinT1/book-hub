@@ -5,8 +5,8 @@ description: Book Hub recommendations. Use when the user asks for book recommend
 
 # Book Hub · Recommendations
 
-1. Call the Book Hub connector: `get_rules` with names `["recommendations", "honesty", "output-format", "ranking", "timeless-nonfiction", "fiction-taste", "buy-decision", "trusted-readers", "research-reuse", "connector-guide", "tags"]`.
-2. Follow the **recommendations** rule exactly. If the user only named specific books, follow the **book-details** rule instead (call `get_rules(["book-details"])`).
+1. Call the Book Hub connector: `get_rules` with flow `"recs"` (it returns every rule this command needs).
+2. Follow the **recommendations** rule exactly. If the user only named specific books, follow the **book-details** rule instead.
 3. If the user says "on what we just discussed", the topic is this conversation so far.
 4. End with the Book Hub links. No follow-up questions.
 

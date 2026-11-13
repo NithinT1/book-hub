@@ -32,7 +32,7 @@ async function book(title: string, extra = {}) {
 }
 
 beforeEach(async () => {
-	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "discussions", "summaries", "sources", "rules_history", "rules", "test_runs"]) await db.prepare(`DELETE FROM ${t}`).run();
+	for (const t of ["appearances", "requests", "notes", "editions", "source_ids", "source_aliases", "facts", "cards", "verdict_history", "quizzes", "discussions", "summaries", "sources", "rules_history", "rules", "test_runs"]) await db.prepare(`DELETE FROM ${t}`).run();
 });
 
 describe("saved research", () => {
@@ -162,12 +162,12 @@ describe("hub pages render", () => {
 		const d = await saveDiscussion(db, { source_id: id, title: "T", body: "body" });
 		const m = await saveSummary(db, id, "summary");
 		const cookie = (await createSessionCookie("owner", env.COOKIE_ENCRYPTION_KEY)).split(";")[0];
-		for (const path of ["/", "/buy", "/shelf", "/shelf?status=summary", "/discover?featured=1&timeless=yes&tag=x", "/notes", "/notes?view=discussions&q=T", "/notes?view=summaries", "/requests?page=2", "/more", "/add", "/add?title=", `/book/${id}`, `/book/${id}/archive`, `/book/${id}/bought`, `/book/${id}/give`, `/discussion/${d.id}`, `/summary/${m!.id}`, "/rules", "/rules/fiction-taste", "/feedback", "/settings", "/tests", "/export.md", "/export.json"]) {
+		for (const path of ["/", "/buy", "/shelf", "/shelf?status=summary", "/discover?featured=1&timeless=yes&tag=x", "/notes", "/notes?view=discussions&q=T", "/notes?view=summaries", "/requests?page=2", "/more", "/add", "/add?title=", `/book/${id}`, `/book/${id}/archive`, `/book/${id}/bought`, `/book/${id}/give`, `/discussion/${d.id}`, `/summary/${m!.id}`, "/rules", "/rules/fiction-profile", "/rules/nonfiction-profile", "/rules/quality-nonfiction", "/rules/verdict", "/rules/verdict?view=history", "/rules/honesty?view=text&edit=1", "/discover?verdict=read&for=self&changed=1&sort=quality", "/feedback", "/settings", "/tests", "/export.md", "/export.json"]) {
 			const res = await worker.fetch(new Request(BASE + path, { headers: { Cookie: cookie } }), { redirect: "manual" });
 			expect(res.status, path).toBe(200);
 		}
 		const bookPage = await (await worker.fetch(new Request(`${BASE}/book/${id}`, { headers: { Cookie: cookie } }))).text();
-		expect(bookPage).toContain("Too new — promising");
+		expect(bookPage).toContain("Too new: promising");
 		expect(bookPage).toContain("<table>");
 	});
 });

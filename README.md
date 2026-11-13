@@ -4,7 +4,7 @@
 
 ![Book Hub's Discover page: books that came up in your conversations, with the best ones first](docs/images/discover.png)
 
-<p align="center"><img src="docs/images/phone.png" alt="Book Hub on a phone: Buy list with the bookstore check, My shelf, and Notes" width="900"></p>
+<p align="center"><img src="docs/images/phone.png" alt="Book Hub on a phone: a book with its Verdict, Timeless, Quality and Fit; the Buy list with the bookstore check; Profile & settings" width="900"></p>
 
 <sub>Screenshots use a sample library.</sub>
 
@@ -37,19 +37,20 @@ Book Hub is a calm, personal reading assistant for these moments. It filters eve
 
 | The moment | What Book Hub does |
 |---|---|
-| **"Someone recommended this. Is it for me?"** | Paste a name, a list, a link or a photo. Each book gets a card: what it's about (no spoilers), **Fit** for you out of 10, whether it has stood the test of time, its weaknesses, ratings and endorsements with links, and a buy decision. Already in your library? It says so. |
+| **"Someone recommended this. Is it for me?"** | Paste a name, a list, a link or a photo. Each book gets three clear answers: **Quality** (is it a good book?), **Timeless** (has it lasted?) and **Fit** (is it right for you?), plus a **Verdict**: Read, Read parts, Idea only, Bench or Skip, and how to get it. Also: what it's about (no spoilers), weaknesses, and ratings and endorsements with links. Already in your library? It says so. |
 | **"I need a book on…"** | Ask for recommendations on a topic, a question or "books like X". A short ranked list, never padded. Fewer, or none, if nothing good fits. |
 | **"It keeps coming up."** | ★ **Most featured** marks books recommended across separate requests, so the ones that really matter rise above the noise. |
+| **"Do I even need to read it?"** | **Book Quiz** (`/book-quiz`): about 5–10 minutes of questions on the book's core ideas, built so common sense can't answer them. You get **"You already know: X/10"** and a Verdict: skip it, read just the parts you're missing, read it, or practise instead of reading. |
 | **"Is it worth a week of my time?"** | A **long summary** (30–60 minutes) with an honest critique, when one good idea doesn't need 300 pages. |
 | **"Help me understand this."** | **Discuss** a chapter or idea while you read; your AI uses your notes and past discussions. Saved to your hub. |
-| **"Should I buy it, and how?"** | First-hand, second-hand, Kindle or summary, decided by your rules. The **Buy list** keeps your order and the last-known price. |
+| **"Should I buy it, and how?"** | The Verdict says whether to read it at all, and how to get it: first-hand, second-hand, Kindle or a summary, following your buying preferences. The **Buy list** keeps your order and the last-known price. |
 | **"I'm in a second-hand bookstore."** | Snap a price tag: buy or skip, and the discount versus new. Snap a whole rack: up to five gems worth picking. |
 | **"What do I own, and what am I reading?"** | Photograph your shelf to catalogue it. Statuses move as you act: Not started → Reading → Finished. Notes (dictation works) and reviews with a rating and "would you re-read?". |
 | **"Surprise me."** | A monthly **check-in**: books like the ones you loved, something different or even opposing, and what's waiting on your Buy list. |
 | **"I'm moving house."** | A **give-away check** suggests which books can go, and never your keepers. |
 
 **Built in everywhere:**
-- **Your rules.** Every criterion (what counts as timeless, how to rank, when to buy second-hand, whose recommendations you trust) is plain text you can edit in the hub. **Your taste** sets what you enjoy in fiction and non-fiction.
+- **Your rules.** **About me as a reader** says what you enjoy, what you're working on and how you like to get books. **How I judge books** sets what counts as a good book (gates and weighted factors), what Fit means and how the Verdict is decided. Both work well untouched, and everything is plain text you can edit in the hub.
 - **Never made up.** Ratings, prices and endorsements always carry a link and a date, or say "couldn't fetch".
 - **Two ways in, always in sync.** Use the hub's website or just chat; both read and write the same library.
 - **Your data.** Everything lives in your own Cloudflare account. Download it any time as Markdown (handy for Obsidian and other notes apps) or as a full JSON backup.
@@ -104,7 +105,7 @@ The rules live in your hub, not in the AI app, so any app that can use the conne
 
 ## Your first five minutes
 
-1. **Your taste** (optional, 2 minutes): in the hub, Profile & settings → Your taste. The fiction you enjoy, the topics you care about, how you like to get books.
+1. **About me** (optional, 2–5 minutes): in the hub, Home → Set up Book Hub, or Profile & settings → About me as a reader. Why you read, your subjects, what you're working on.
 2. **Snap your shelf:** Book Hub → My shelf → *Add shelf photos*, or type `/book-shelf` in Claude and send a photo.
 3. **Ask about a book you're considering:** `/book-details The Count of Monte Cristo`.
 4. **Ask for recommendations:** `/book-recs books that explain how science works`.
@@ -133,7 +134,7 @@ Planned, roughly in this order:
 - [ ] **One-click "Deploy to Cloudflare"** button to shorten setup
 - [ ] **Sync to a local folder** (e.g. an Obsidian vault) without scripts
 - [ ] **Kindle integration:** your Kindle library and highlights (from Kindle's own export; no DRM removal)
-- [ ] **AI interview for your taste,** and a richer Fit and taste framework
+- [ ] **AI interview** to fill in your reader profile
 - [ ] **Goodreads import** (from Goodreads' CSV export)
 - [ ] **Reading stats:** what you read, when, and how you rated it
 - [ ] **Step-by-step guides for ChatGPT and Gemini,** once tested
@@ -152,7 +153,7 @@ Ideas welcome: [open an issue](../../issues).
 
 **What happens if I hit the free Cloudflare limits?** The hub pauses until the next day. You're never billed on the free plan. A personal library typically uses a few percent of the limits.
 
-**Can I change how it judges books?** Yes. Every rule is editable in the hub (Profile & settings → Rules), and every earlier version is kept.
+**Can I change how it judges books?** Yes. Profile & settings → How I judge books: turn Quality gates on or off, change factor weights, edit the Fit scale and the Verdict steps. Every rule is editable and every earlier version is kept.
 
 **How do I update to a new version?** See [Updating](docs/SETUP.md#updating).
 

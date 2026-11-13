@@ -16,7 +16,7 @@ const post = (path: string, fields: Record<string, string>) =>
 
 beforeEach(async () => {
 	cookie = (await createSessionCookie("owner", env.COOKIE_ENCRYPTION_KEY)).split(";")[0];
-	for (const t of ["facts", "sources", "settings"]) await db.prepare(`DELETE FROM ${t}`).run();
+	for (const t of ["facts", "verdict_history", "quizzes", "sources", "settings"]) await db.prepare(`DELETE FROM ${t}`).run();
 });
 
 describe("currency (pure)", () => {
@@ -77,56 +77,53 @@ describe("AI app setting", () => {
 });
 
 describe("your taste", () => {
-	const legacyFiction = "# My fiction taste\n\nFrom an interview.\n\n## What I want fiction to do\n- **Warm** — gentle.\n\n## Avoid\n- **Dark** — bleak endings.\n\n## Other preferences\n- **Length:** any.\n\n## How to use this\n- Fixed guidance.";
+	const legacyFiction = "# My fiction profile\n\nFrom an interview.\n\n## What I want fiction to do\n- **Warm** — gentle.\n\n## Avoid\n- **Dark** — bleak endings.\n\n## Other preferences\n- **Length:** any.\n\n## How to use this\n- Fixed guidance.";
 	const legacyBuy = "# Buy decision\n\n- Timeless and shelf-worthy → **First-hand**.\n\nThe user prefers physical books.";
 	const legacyReaders = "# Trusted readers\n\nCheck these first.\n\nAda · Grace · Linus\n\nOther prolific readers from any field are welcome.";
 	const setRule = (name: string, body: string) => db.prepare("INSERT INTO rules (name, title, body) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET body = excluded.body").bind(name, name, body).run();
 
 	it("older rules load into the form without losing a line, and saving keeps them", async () => {
 		await db.prepare("DELETE FROM rules").run();
-		await setRule("fiction-taste", legacyFiction);
-		await setRule("buy-decision", legacyBuy);
+		await setRule("fiction-profile", legacyFiction);
+		await setRule("buying-preferences", legacyBuy);
 		await setRule("trusted-readers", legacyReaders);
-		const page = await (await get("/taste")).text();
-		expect(page).toContain("Warm — gentle.");
-		expect(page).toContain("The user prefers physical books.");
-		expect(page).toContain("Ada · Grace · Linus");
-		expect(page).toContain("AI interview to set this up for you is coming soon");
-		const { TASTE, readTaste, writeTaste } = await import("../src/taste");
-		for (const [rule, body] of [["fiction-taste", legacyFiction], ["buy-decision", legacyBuy], ["trusted-readers", legacyReaders]] as const) {
-			const t = TASTE.find((x) => x.rule === rule)!;
-			const out = writeTaste(t, body, readTaste(t, body));
+		expect(await (await get("/rules/fiction-profile")).text()).toContain("Warm — gentle.");
+		expect(await (await get("/rules/buying-preferences")).text()).toContain("The user prefers physical books.");
+		expect(await (await get("/rules/trusted-readers")).text()).toContain("Ada · Grace · Linus");
+		expect((await get("/taste")).headers.get("Location")).toBe("/rules/nonfiction-profile");
+		const { SIMPLE_FORMS, readSimple, writeSimple } = await import("../src/profile");
+		for (const [rule, body] of [["fiction-profile", legacyFiction], ["buying-preferences", legacyBuy], ["trusted-readers", legacyReaders]] as const) {
+			const t = SIMPLE_FORMS[rule];
+			const out = writeSimple(t, body, readSimple(t, body));
 			for (const line of body.split("\n").map((l) => l.trim()).filter(Boolean)) expect(out, `${rule}: ${line}`).toContain(line);
-			expect(writeTaste(t, out, readTaste(t, out))).toBe(out);
+			expect(writeSimple(t, out, readSimple(t, out))).toBe(out);
 		}
 	});
 	it("saving the form writes the rules (old version kept) and the AI reads them", async () => {
 		await db.prepare("DELETE FROM rules").run();
 		await db.prepare("DELETE FROM rules_history").run();
-		await get("/taste");
-		const res = await post("/taste", {
-			"fiction-taste|What I want fiction to do": "- Funny and warm",
-			"nonfiction-taste|Topics I care about": "- History of science",
-			"buy-decision|My preferences": "- Kindle first",
-			"trusted-readers|People whose picks I trust": "Ada Lovelace",
-		});
-		expect(res.status).toBe(303);
+		await get("/more");
+		expect((await post("/rules/fiction-profile/form", { "What I want fiction to do": "- Funny and warm" })).status).toBe(303);
+		await post("/rules/nonfiction-profile/form", { subjects_add: "History of science" });
+		await post("/rules/buying-preferences/form", { "My preferences": "- Kindle first" });
+		await post("/rules/trusted-readers/form", { "People whose picks I trust": "Ada Lovelace" });
 		const body = async (n: string) => (await db.prepare("SELECT body FROM rules WHERE name = ?").bind(n).first<{ body: string }>())!.body;
-		expect(await body("fiction-taste")).toMatch(/## What I want fiction to do\n- Funny and warm/);
-		expect(await body("fiction-taste")).toContain("## How to use this");
-		expect(await body("nonfiction-taste")).toContain("- History of science");
-		expect(await body("buy-decision")).toMatch(/## My preferences\n- Kindle first/);
+		expect(await body("fiction-profile")).toMatch(/## What I want fiction to do\n- Funny and warm/);
+		expect(await body("fiction-profile")).toContain("## How to use this");
+		expect(await body("nonfiction-profile")).toContain("- **In:** History of science");
+		expect(await body("buying-preferences")).toMatch(/## My preferences\n- Kindle first/);
 		expect(await body("trusted-readers")).toContain("Ada Lovelace");
-		expect((await db.prepare("SELECT COUNT(*) AS n FROM rules_history WHERE name = 'fiction-taste'").first<{ n: number }>())!.n).toBe(1);
+		expect((await db.prepare("SELECT COUNT(*) AS n FROM rules_history WHERE name = 'fiction-profile'").first<{ n: number }>())!.n).toBe(1);
 	});
-	it("Home shows the taste card only until it's set or put off", async () => {
+	it("Home shows the set-up card until it's done or hidden", async () => {
 		await db.prepare("DELETE FROM rules").run();
-		expect(await (await get("/")).text()).toContain("Tell Book Hub your taste");
-		await post("/taste/later", {});
-		expect(await (await get("/")).text()).not.toContain("Tell Book Hub your taste");
-		await db.prepare("DELETE FROM settings").run();
-		await setRule("fiction-taste", legacyFiction);
-		expect(await (await get("/")).text()).not.toContain("Tell Book Hub your taste");
+		const home = await (await get("/")).text();
+		expect(home).toContain("Set up Book Hub");
+		expect(home).toContain("0 of 3 done");
+		await setRule("fiction-profile", legacyFiction);
+		expect(await (await get("/")).text()).toContain("1 of 3 done");
+		await post("/setup/hide", {});
+		expect(await (await get("/")).text()).not.toContain("Set up Book Hub");
 	});
 });
 
@@ -155,6 +152,8 @@ describe("Notes tab: add a note or review from here", () => {
 		expect(reviewPick).not.toContain("Owned Book");
 	});
 	it("Profile & settings shows Kindle integration as coming soon", async () => {
-		expect(await (await get("/more")).text()).toMatch(/Kindle integration <span class="tag star">Coming soon<\/span>/);
+		const page = await (await get("/more")).text();
+		expect(page).toMatch(/<strong>Kindle<\/strong>.*<span class="tag star">Coming soon<\/span>/s);
+		for (const label of ["About me as a reader", "How I judge books", "Settings", "System rules", "Non-fiction profile", "Quality: non-fiction", "Verdict", "Using starter"]) expect(page).toContain(label);
 	});
 });

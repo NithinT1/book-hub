@@ -4,6 +4,33 @@ All notable changes to Book Hub. Versions follow [semantic versioning](https://s
 
 Each entry says whether you need to **re-upload skills** or **reconnect the connector** after updating (see [Updating](docs/SETUP.md#updating)).
 
+## [2.9.0] — Book Quiz
+
+**After updating:** upload the new `book-quiz` skill, and reconnect the connector (a new tool, `save_quiz`). Coming from 2.7, also re-upload the other skills (see 2.8.0).
+
+### Added
+- **Book Quiz** (`/book-quiz`): questions on a book's core ideas, then **"You already know: X/10"** and a Verdict (Skip, Read parts, Read, or the new **Practise instead**). Scan first (5 questions), Deep only when the result is unclear.
+- Quiz results on the book page (score, idea by idea, what's left for you, history), a "Quiz me" item under ⋯, a Quiz filter in Discover (quizzed skips are hidden), and **Finish your quiz** on Home for quizzes stopped midway.
+- **Search on every page:** 🔍 in the top bar (or press **/** on a laptop). Results show your books first, then Archived & Skipped books in their own section, only when they match. Home now starts with Ask AI. Discover's tab icon is now a compass.
+
+## [2.8.0] — Quality, Fit and Verdict
+
+**After updating:** re-upload all skills once, and reconnect the connector (Settings → Connectors → Book Hub → Disconnect, then Connect). Skills now ask the hub for their rules, so later rule changes won't need a re-upload.
+
+### Added
+- **Three answers and one decision for every book:** Quality /10 (is it a good book?), Timeless (has it lasted?), Fit /10 with a General or Self label (is it right for you?), and a saved **Verdict**: Read, Read parts, Reread, Idea only, Bench or Skip, plus how to get it.
+- **Book page strip** with Status, Verdict, Timeless, Quality and Fit, and "Why these scores" (factors, the belief a book breaks, the mistake it prevents, Verdict history).
+- **Your own verdict:** set it on the book page; it's locked until you unlock it.
+- **Profile & settings, regrouped:** About me as a reader · How I judge books · Settings · System rules. Every rule has three views (in plain words, rule text, history), says where it's used, and can be reset to the starter.
+- **Non-fiction profile** in 8 guided sections: why you read, subjects in and out, what you're working on, values, what makes a book worth it, deal-breakers, originals vs modern books, reading time.
+- **Quality rules you can tune:** turn gates on or off and change factor weights in a form.
+- **Home set-up card** for new hubs (connect, about me, add your shelf); a pointer from Discover to Ask AI; Discover filters for Verdict and General/Self; "Best first" now uses Quality × Fit; a note on Buy list books whose Verdict changed.
+
+### Changed
+- Rules renamed for clarity: `fiction-taste` → `fiction-profile`, `nonfiction-taste` → `nonfiction-profile`, `buy-decision` → `buying-preferences`. The timeless test is now part of `quality-nonfiction`. Your edits and history move with them.
+- Ranking: your library never changes the order of a list; it only labels books and flags overlap.
+- Earlier buy decisions become each book's starting Verdict.
+
 ## [2.7.0] — first public release
 
 Earlier versions were private.
