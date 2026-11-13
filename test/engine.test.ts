@@ -1,7 +1,8 @@
 import { env } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { findReferenceScore, getRules, getSource, listSources, saveCard, saveRule, saveSource, setVerdict } from "../src/db";
+import { findReferenceScore, getRules, getSource, listSources, saveCard, saveRule, saveSource, saveSummary, setVerdict } from "../src/db";
+import { readMinutes, splitSummary } from "../src/hub/reader";
 import { nonfictionProgress, readNonfiction, readQuality, writeNonfiction, writeQuality } from "../src/profile";
 import { DEFAULT_RULES, ensureDefaultRules, FLOWS, RULE_INFO, rulesForFlow } from "../src/rules-defaults";
 import { createSessionCookie } from "../src/session";
@@ -21,7 +22,7 @@ const book = async (title: string, extra: Record<string, unknown> = {}) => {
 
 beforeEach(async () => {
 	cookie = (await createSessionCookie("owner", env.COOKIE_ENCRYPTION_KEY)).split(";")[0];
-	for (const t of ["appearances", "requests", "notes", "facts", "cards", "verdict_history", "quizzes", "source_tags", "source_aliases", "sources", "rules_history", "rules", "settings", "reference_scores"]) await db.prepare(`DELETE FROM ${t}`).run();
+	for (const t of ["appearances", "requests", "notes", "facts", "cards", "verdict_history", "quizzes", "summaries", "source_tags", "source_aliases", "sources", "rules_history", "rules", "settings", "reference_scores"]) await db.prepare(`DELETE FROM ${t}`).run();
 });
 
 describe("rules: flows and catalogue", () => {
@@ -370,5 +371,39 @@ describe("pins on My shelf", () => {
 		expect((await getSource(db, ids[5]))!.pin_rank).toBeNull();
 		shelf = await (await get("/shelf")).text();
 		expect(shelf).toContain("(4/5)");
+	});
+});
+
+describe("long summary reading view", () => {
+	const svg = "PHN2Zz48L3N2Zz4=";
+	const md = `# The Book — long summary\n*Reading time: about an hour.*\n\n## Can this summary replace the book?\nIdeas 7/10.\n\n## 1. The book in one paragraph\nWords here.\n\n### A sub-heading\nMore.\n![Fig](data:image/svg+xml;base64,${svg})\n*Figure 1. A caption.*\n\n## 2. Critique\nWeak spots.`;
+	it("splits sections from ## headings, drops numbers, keeps sub-headings inside, and captions figures", () => {
+		const { intro, sections } = splitSummary(md);
+		expect(sections.map((s) => s.title)).toEqual(["Can this summary replace the book?", "The book in one paragraph", "Critique"]);
+		expect(intro).toContain("Reading time");
+		expect(intro).not.toContain("The Book — long summary");
+		expect(sections[1].html).toContain("<h3>A sub-heading</h3>");
+		expect(sections[1].html).toContain("<figcaption>Figure 1. A caption.</figcaption></figure>");
+	});
+	it("counts reading time without pictures", () => {
+		expect(readMinutes(`${"word ".repeat(400)}\n![x](data:image/svg+xml;base64,${"A".repeat(50000)})`)).toBe(2);
+	});
+	it("shows contents, versions, PDF and Improve on a wide page, Book style first", async () => {
+		const id = await book("Patterns");
+		const v1 = await saveSummary(db, id, md);
+		await db.prepare("UPDATE summaries SET created_at = '2026-01-01T00:00:00Z' WHERE id = ?").bind(v1!.id).run();
+		const v2 = await saveSummary(db, id, md.replace("Weak spots", "Weak spots, improved"));
+		const page = await (await get(`/summary/${v2!.id}`)).text();
+		expect(page).toContain('<main class="wide">');
+		expect(page).toContain('<a href="#s2" data-sec="s2">The book in one paragraph</a>');
+		expect(page).toContain('<section data-sec="s1" class="replace">');
+		expect(page).toContain("Version 2 of 2");
+		expect(page).toContain(`<option value="${v1!.id}">Version 1 · 2026-01-01</option>`);
+		expect(page).toContain('id="pdf"');
+		expect(page).toContain(encodeURIComponent(`(summary #${v2!.id})`).replace(/%20/g, "%20"));
+		expect(page).toContain("family=Literata");
+		expect(page).toContain("[hidden]{display:none!important}");
+		const one = await (await get(`/summary/${v1!.id}`)).text();
+		expect(one).toContain(`<option value="${v1!.id}" selected>`);
 	});
 });

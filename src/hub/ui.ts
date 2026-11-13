@@ -66,7 +66,9 @@ export const HELP = {
 	fullDetails: ["Full details", "Opens your AI app with /book-details for this book: card, timeless verdict, ratings and price with links, buy decision. Saved to this page."],
 	refreshDetails: ["Refresh details", "Opens your AI app to research this book again (new prices, ratings, endorsements) and update the card on this page."],
 	discuss: ["Discuss", "Opens your AI app with /book-discuss for this book. It loads your notes and past discussions, then goes deep on a chapter or idea. Say “save” to keep it here. Marks the book as Reading."],
-	summary: ["Long summary", "Opens your AI app with /book-summary: a 30–60 minute read instead of the book, with critique and an originality check. Saved to Notes → Summaries. Doesn't change the status."],
+	improveSummary: ["Improve in Claude", "Opens your AI app with /book-summary to improve this summary: Claude keeps what works, adds what's missing and fixes mistakes, then saves it as a new version. Older versions stay here."],
+	pdf: ["Download PDF", "Opens your browser's print window. Choose \"Save as PDF\" as the printer."],
+	summary: ["Long summary", "Opens your AI app with /book-summary: a 30–60 minute read instead of the book, with pictures, critique and an honest \"can this replace the book?\" check. Works best with Opus and extended thinking. Saved to Notes → Summaries. Doesn't change the status."],
 	continueDiscussion: ["Continue in Claude", "Opens your AI app to pick this discussion up where you left off, starting from its open questions."],
 	buy: ["Add to Buy list", "Puts this book at the bottom of your Buy list. Reorder it on the Buy list tab."],
 	bought: ["Bought it", "Record how you bought it (first-hand, second-hand or Kindle) and the price. Moves it to My shelf → Not started and off the Buy list."],
@@ -315,7 +317,7 @@ const NAV_ICON: Record<Tab, string> = {
  * Every page: logo + tabs, then a page header — title on the left, that page's actions on the right (one
  * primary, the rest secondary) — then the body.
  */
-export function layout(c: HubContext, active: Tab | null, title: string, body: string, opts: { h1?: boolean; actions?: string; search?: boolean } = {}) {
+export function layout(c: HubContext, active: Tab | null, title: string, body: string, opts: { h1?: boolean; actions?: string; search?: boolean; wide?: boolean; head?: string } = {}) {
 	// A book's life left to right, with Home in the centre; the rest lives behind the ☰ menu.
 	const tabs: [Tab, string, string][] = [
 		["discover", "/discover", "Discover"],
@@ -332,20 +334,21 @@ export function layout(c: HubContext, active: Tab | null, title: string, body: s
 		.join("");
 	return page(
 		title === "Home" ? "Book Hub" : `${title} · Book Hub`,
-		`<header class="top"><a class="brand" href="/">${LOGO}<span>Book Hub</span></a><nav class="tabs">${nav}</nav>
+		`<header class="top${opts.wide ? " wide" : ""}"><a class="brand" href="/">${LOGO}<span>Book Hub</span></a><nav class="tabs">${nav}</nav>
 <div class="top-icons"><a class="search-button" href="/search" aria-label="Search your books" title="Search your books (press /)"${opts.search ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
 <a class="menu-button" href="/more" aria-label="Profile and settings" title="Profile & settings"${active === "more" ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a></div>
 ${opts.search ? "" : `<form class="searchbar" method="get" action="/search" role="search" hidden><input type="search" name="q" placeholder="Search your books: title, author, tag…" aria-label="Search your books" autocomplete="off"><button class="btn">Search</button></form>`}</header>
-<main>${opts.h1 === false ? "" : `<div class="page-head"><h1>${esc(title)}</h1>${opts.actions ? `<div class="page-actions">${opts.actions}</div>` : ""}</div>`}${body}</main>`,
+<main${opts.wide ? ` class="wide"` : ""}>${opts.h1 === false ? "" : `<div class="page-head"><h1>${esc(title)}</h1>${opts.actions ? `<div class="page-actions">${opts.actions}</div>` : ""}</div>`}${body}</main>`,
 		c.get("aiApp") ?? "claude",
+		opts.head,
 	);
 }
 
-export function page(title: string, body: string, aiApp: AiApp = "claude") {
+export function page(title: string, body: string, aiApp: AiApp = "claude", head = "") {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(title)}</title><meta name="robots" content="noindex"><meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO.replace('width="28" height="28" ', 'xmlns="http://www.w3.org/2000/svg" '))}">
-<style>${CSS}</style></head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${SEARCH_JS}${AI_JS}</script></body></html>`;
+<style>${CSS}</style>${head}</head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${SEARCH_JS}${AI_JS}</script></body></html>`;
 }
 
 // Search: the 🔍 in the top bar opens a search field under it (no JS: it goes to the search page). "/" opens it too.
@@ -372,7 +375,7 @@ a{color:var(--ink);text-decoration-color:#b9bbc1;text-underline-offset:2px}h1{fo
 .top{flex-wrap:wrap;row-gap:6px}.searchbar{flex:1 0 100%;display:flex;gap:8px;padding:2px 0 6px}[hidden]{display:none!important}.searchbar input{flex:1;min-width:0}
 .menu-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.menu-button:hover,.menu-button[aria-current]{background:var(--soft)}.tabs a{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--muted);padding:6px 10px;border-radius:8px;white-space:nowrap}
 .tabs a[aria-current]{background:var(--soft);color:var(--ink);font-weight:600}.tabs svg{display:none}
-main{max-width:900px;margin:0 auto;padding:12px 16px 96px}
+main{max-width:900px;margin:0 auto;padding:12px 16px 96px}main.wide{max-width:1240px}.top.wide{padding-inline:max(16px,calc((100% - 1240px)/2))}
 .muted{color:var(--muted);font-size:.9rem;font-weight:400}.empty{padding:20px;background:var(--soft);border-radius:12px;color:var(--muted)}
 .search,.filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.search input{flex:1 1 220px}
 input,select,textarea{font:inherit;padding:9px 10px;border:1px solid var(--edge);border-radius:6px;background:#fff;min-width:0;max-width:100%}

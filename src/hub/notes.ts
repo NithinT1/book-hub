@@ -1,7 +1,8 @@
 // Notes tab: reviews, notes, discussions and summaries in one place.
 
 import { Hono } from "hono";
-import { getDiscussion, getSummary, listDiscussions, listSources, listSummaries } from "../db";
+import { getDiscussion, getSourceRow, getSummary, listDiscussions, listSources, listSummaries } from "../db";
+import { READER_HEAD, readMinutes, summaryReader } from "./reader";
 import { reviewFromMarkdown } from "../library";
 import { renderMarkdown } from "../markdown";
 import { askButton, cover, esc, layout, statusBadge, tip, type HubEnv } from "./ui";
@@ -37,7 +38,7 @@ notes.get("/notes", async (c) => {
 	} else {
 		const rows = await listSummaries(db, { query: q, limit: 200 });
 		body = rows.length
-			? `<ul class="plain">${rows.map((m) => `<li><a href="/summary/${m.id}">${esc(m.book)}</a><div class="muted">${esc(m.created_at.slice(0, 10))} · ${Math.round(m.body.split(/\s+/).length / 200)} min read</div></li>`).join("")}</ul>`
+			? `<ul class="plain">${rows.map((m) => `<li><a href="/summary/${m.id}">${esc(m.book)}</a><div class="muted">${esc(m.created_at.slice(0, 10))} · ${readMinutes(m.body)} min read</div></li>`).join("")}</ul>`
 			: `<p class="empty">None yet. In Claude: /book-summary …</p>`;
 	}
 	return c.html(
@@ -89,10 +90,9 @@ notes.get("/discussion/:id", async (c) => {
 notes.get("/summary/:id", async (c) => {
 	const m = await getSummary(c.env.DB, Number(c.req.param("id")));
 	if (!m) return c.html(layout(c, "notes", "Not found", `<p>No such summary. <a href="/notes?view=summaries">Back</a></p>`), 404);
+	const [versions, source] = await Promise.all([listSummaries(c.env.DB, { sourceId: m.source_id, limit: 50 }), getSourceRow(c.env.DB, m.source_id)]);
+	const byline = source ? [source.authors.join(", "), source.year, source.pages ? `${source.pages} pages` : null].filter(Boolean).join(" · ") : "";
 	return c.html(
-		layout(c, "notes", m.book, `
-<p><a href="/book/${m.source_id}">← Book page</a></p>
-<p class="muted">Summary saved ${esc(m.created_at.slice(0, 10))} · about ${Math.round(m.body.split(/\s+/).length / 200)} min read</p>
-<article class="md">${renderMarkdown(m.body)}</article>`),
+		layout(c, "notes", m.book, summaryReader({ id: m.id, sourceId: m.source_id, book: m.book, byline, body: m.body, versions }), { h1: false, wide: true, head: READER_HEAD }),
 	);
 });

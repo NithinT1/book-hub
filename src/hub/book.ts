@@ -24,6 +24,7 @@ import {
 import { applyStatusEvent, MAX_PINS, moveOnBuyList, movePin, pinBook, removeTag, unpinBook, REVIEW_SECTIONS, reviewFromMarkdown, reviewToMarkdown, saveReview, saveTags, setHiddenFromFeatured, setStatus } from "../library";
 import { CURRENCIES, isCurrency, showMoney } from "../currency";
 import { renderMarkdown } from "../markdown";
+import { readMinutes } from "./reader";
 
 const toCurrency = (v: string | null) => (isCurrency(v) ? v : null);
 import { lookupBook } from "../openlibrary";
@@ -134,7 +135,7 @@ ${reviewPanel(s)}
   <h2>Discussions <span class="muted">(${discussions.length})</span></h2>
   ${discussions.length ? `<ul class="plain">${discussions.map((d) => `<li><a href="/discussion/${d.id}">${esc(d.title)}</a> <span class="muted">${d.locator ? `· ${esc(d.locator)} ` : ""}· ${esc(d.updated_at.slice(0, 10))}</span></li>`).join("")}</ul>` : `<p class="muted">None saved yet.</p>`}
   <h2>Summaries <span class="muted">(${summaries.length})</span></h2>
-  ${summaries.length ? `<ul class="plain">${summaries.map((m) => `<li><a href="/summary/${m.id}">Summary of ${esc(m.created_at.slice(0, 10))}</a> <span class="muted">· ${Math.round(m.body.split(/\s+/).length / 200)} min read</span></li>`).join("")}</ul>` : `<p class="muted">None yet.</p>`}
+  ${summaries.length ? `<ul class="plain">${summaries.map((m) => `<li><a href="/summary/${m.id}">Summary of ${esc(m.created_at.slice(0, 10))}</a> <span class="muted">· ${readMinutes(m.body)} min read</span></li>`).join("")}</ul>` : `<p class="muted">None yet.</p>`}
 </section>
 
 <section class="panel">

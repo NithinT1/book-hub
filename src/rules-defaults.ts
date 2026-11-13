@@ -115,7 +115,7 @@ export const FLOWS = {
 	store: ["store", "output-format", "trusted-readers", ...JUDGING, ...COMMON],
 	shelf: ["shelf", "verdict", "quality-nonfiction", "buying-preferences", ...COMMON],
 	checkin: ["checkin", "output-format", "ranking", ...JUDGING, ...COMMON],
-	summary: ["summary", "honesty", "handover", "connector-guide"],
+	summary: ["summary", "honesty", "nonfiction-profile", "fiction-profile", "handover", "connector-guide"],
 	discuss: ["discussion", "honesty", "handover"],
 	quiz: ["quiz", "verdict", "fit", "nonfiction-profile", "quality-nonfiction", "honesty", "handover", "connector-guide"],
 } as const;
