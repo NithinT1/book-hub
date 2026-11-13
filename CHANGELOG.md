@@ -4,6 +4,16 @@ All notable changes to Book Hub. Versions follow [semantic versioning](https://s
 
 Each entry says whether you need to **re-upload skills** or **reconnect the connector** after updating (see [Updating](docs/SETUP.md#updating)).
 
+## [2.12.0] — Notification bell
+
+No skill or connector changes: update the code and deploy.
+
+### Added
+- **🔔 Notifications** in the top bar, with a count of what's new since you last looked. Verdict changes, a reminder for books stopped 30+ days ago, unfinished quizzes and open feedback each come with their own actions and a ✕ to delete. Laptop opens a panel under the bell; phone opens a page. A deleted stopped-book reminder comes back in 30 days.
+
+### Changed
+- Home no longer shows the yellow banners, the "Finish your quiz" panel or the feedback tile; they live in the bell.
+
 ## [2.11.0] — Long summaries you can read, and Stopped books
 
 **After updating:** re-upload the `book-summary` skill, push the changed rules (`node scripts/push-rules.mjs summary checkin shelf connector-guide`), and reconnect the connector.
