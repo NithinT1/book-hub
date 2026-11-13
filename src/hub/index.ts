@@ -6,6 +6,8 @@ import { book } from "./book";
 import { lists } from "./lists";
 import { more } from "./more";
 import { notes } from "./notes";
+import { notices } from "./notices";
+import { newNoticeCount } from "../notices";
 import { getSetting } from "../db";
 import { isAiApp, page, type HubEnv } from "./ui";
 
@@ -22,6 +24,7 @@ hub.use("*", async (c, next) => {
 	c.set("login", login!);
 	const ai = await getSetting(c.env.DB, "ai_app");
 	if (isAiApp(ai)) c.set("aiApp", ai);
+	if (c.req.method === "GET") c.set("noticeCount", await newNoticeCount(c.env.DB));
 	await next();
 });
 
@@ -31,6 +34,7 @@ hub.route("/", lists);
 hub.route("/", book);
 hub.route("/", notes);
 hub.route("/", more);
+hub.route("/", notices);
 
 export function signedOutPage() {
 	return page("Signed out", `<main><h1>Book Hub</h1><p>You're signed out.</p><p><a class="btn" href="/login">Sign in with GitHub</a></p></main>`);

@@ -7,7 +7,7 @@ import { esc } from "../markdown";
 import { ARCHIVE_LABEL, BUY_FORMAT_LABEL, SHELF_STATUSES, STATUS_LABEL, type ArchiveReason, type BuyFormat, type Status } from "../status";
 
 export { esc };
-export type HubEnv = { Bindings: Bindings; Variables: { login: string; aiApp?: AiApp } };
+export type HubEnv = { Bindings: Bindings; Variables: { login: string; aiApp?: AiApp; noticeCount?: number } };
 export type HubContext = Context<HubEnv>;
 
 export const TYPE_LABEL: Record<string, string> = { fiction: "Fiction", nonfiction: "Non-fiction", biography: "Biography", autobiography: "Autobiography" };
@@ -323,7 +323,7 @@ const NAV_ICON: Record<Tab, string> = {
  * Every page: logo + tabs, then a page header — title on the left, that page's actions on the right (one
  * primary, the rest secondary) — then the body.
  */
-export function layout(c: HubContext, active: Tab | null, title: string, body: string, opts: { h1?: boolean; actions?: string; search?: boolean; wide?: boolean; head?: string } = {}) {
+export function layout(c: HubContext, active: Tab | null, title: string, body: string, opts: { h1?: boolean; actions?: string; search?: boolean; notices?: boolean; wide?: boolean; head?: string } = {}) {
 	// A book's life left to right, with Home in the centre; the rest lives behind the ☰ menu.
 	const tabs: [Tab, string, string][] = [
 		["discover", "/discover", "Discover"],
@@ -341,7 +341,7 @@ export function layout(c: HubContext, active: Tab | null, title: string, body: s
 	return page(
 		title === "Home" ? "Book Hub" : `${title} · Book Hub`,
 		`<header class="top${opts.wide ? " wide" : ""}"><a class="brand" href="/">${LOGO}<span>Book Hub</span></a><nav class="tabs">${nav}</nav>
-<div class="top-icons"><a class="search-button" href="/search" aria-label="Search your books" title="Search your books (press /)"${opts.search ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
+<div class="top-icons">${bell(c.get("noticeCount") ?? 0, Boolean(opts.notices))}<a class="search-button" href="/search" aria-label="Search your books" title="Search your books (press /)"${opts.search ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a>
 <a class="menu-button" href="/more" aria-label="Profile and settings" title="Profile & settings"${active === "more" ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></a></div>
 ${opts.search ? "" : `<form class="searchbar" method="get" action="/search" role="search" hidden><input type="search" name="q" placeholder="Search your books: title, author, tag…" aria-label="Search your books" autocomplete="off"><button class="btn">Search</button></form>`}</header>
 <main${opts.wide ? ` class="wide"` : ""}>${opts.h1 === false ? "" : `<div class="page-head"><h1>${esc(title)}</h1>${opts.actions ? `<div class="page-actions">${opts.actions}</div>` : ""}</div>`}${body}</main>`,
@@ -350,14 +350,25 @@ ${opts.search ? "" : `<form class="searchbar" method="get" action="/search" role
 	);
 }
 
+/** The bell: a count of what's new since you last looked. Laptop opens a panel under it; phone opens the page. */
+function bell(n: number, current: boolean) {
+	return `<span class="bell-wrap"><a class="bell-button" href="/notifications" aria-label="Notifications${n ? ` (${n} new)` : ""}" title="Notifications"${current ? ` aria-current="page"` : ""}><svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15zM10 20.5a2 2 0 004 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>${n ? `<span class="badge">${n > 9 ? "9+" : n}</span>` : ""}</a><div class="bell-pop" role="dialog" aria-label="Notifications" hidden></div></span>`;
+}
+
 export function page(title: string, body: string, aiApp: AiApp = "claude", head = "") {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(title)}</title><meta name="robots" content="noindex"><meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO.replace('width="28" height="28" ', 'xmlns="http://www.w3.org/2000/svg" '))}">
-<style>${CSS}</style>${head}</head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${SEARCH_JS}${AI_JS}</script></body></html>`;
+<style>${CSS}</style>${head}</head><body data-ai="${aiApp}">${body}<script>${MENUS_JS}${SEARCH_JS}${BELL_JS}${AI_JS}</script></body></html>`;
 }
 
 // Search: the 🔍 in the top bar opens a search field under it (no JS: it goes to the search page). "/" opens it too.
+const BELL_JS = `(()=>{const b=document.querySelector(".bell-button"),p=document.querySelector(".bell-pop");if(!b||!p)return;
+const close=()=>{p.hidden=true;b.setAttribute("aria-expanded","false")};
+b.addEventListener("click",async e=>{if(!matchMedia("(min-width:641px)").matches)return;e.preventDefault();if(!p.hidden)return close();
+p.hidden=false;b.setAttribute("aria-expanded","true");p.innerHTML='<p class="muted">Loading…</p>';
+try{const r=await fetch("/notifications?part=1&back="+encodeURIComponent(location.pathname+location.search));p.innerHTML=await r.text();const d=b.querySelector(".badge");if(d)d.remove()}catch(_){location.href="/notifications"}});
+document.addEventListener("click",e=>{if(!p.hidden&&!e.target.closest(".bell-wrap"))close()});document.addEventListener("keydown",e=>{if(e.key==="Escape")close()})})();`;
 const SEARCH_JS = `(()=>{const b=document.querySelector(".search-button"),f=document.querySelector(".searchbar");if(!b||!f)return;const i=f.querySelector("input");
 const open=()=>{f.hidden=false;b.setAttribute("aria-expanded","true");i.focus()};const close=()=>{f.hidden=true;b.setAttribute("aria-expanded","false")};
 b.addEventListener("click",(e)=>{e.preventDefault();f.hidden?open():close()});
@@ -377,7 +388,15 @@ a{color:var(--ink);text-decoration-color:#b9bbc1;text-underline-offset:2px}h1{fo
 .top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:8px max(16px,calc((100% - 900px)/2))}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;white-space:nowrap;padding-right:20px;border-right:1px solid var(--line)}
 .tabs{display:flex;gap:2px;flex:1}
-.top-icons{margin-left:auto;display:flex;align-items:center;gap:4px}.search-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.search-button:hover,.search-button[aria-current],.search-button[aria-expanded="true"]{background:var(--soft)}
+.top-icons{margin-left:auto;display:flex;align-items:center;gap:4px}
+.bell-wrap{position:relative}.bell-button{position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.bell-button:hover,.bell-button[aria-current],.bell-button[aria-expanded="true"]{background:var(--soft)}
+.badge{position:absolute;top:5px;right:4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--danger);color:#fff;font-size:.68rem;font-weight:700;line-height:17px;text-align:center}
+.bell-pop{position:absolute;right:0;top:46px;width:min(420px,calc(100vw - 32px));max-height:70vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(23,24,27,.14);padding:12px 14px;z-index:6}
+.nt-list{list-style:none;margin:0;padding:0}.nt-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 0;border-bottom:1px solid var(--line)}.nt-item:last-child{border-bottom:0}
+.nt-item .n-kind{font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.nt-item.new .n-kind::after{content:" · new";color:var(--danger)}
+.nt-item .n-text{grid-column:1}.nt-item .n-acts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}.nt-item .n-x{grid-column:2;grid-row:1/3;align-self:start}
+.nt-item .n-x button{width:30px;height:30px;border:0;border-radius:999px;background:none;color:var(--muted);cursor:pointer;font-size:1rem}.nt-item .n-x button:hover{background:var(--soft);color:var(--ink)}
+.notices-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}.notices-head h2{margin:0}.search-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.search-button:hover,.search-button[aria-current],.search-button[aria-expanded="true"]{background:var(--soft)}
 .top{flex-wrap:wrap;row-gap:6px}.searchbar{flex:1 0 100%;display:flex;gap:8px;padding:2px 0 6px}[hidden]{display:none!important}.searchbar input{flex:1;min-width:0}
 .menu-button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;color:var(--ink)}.menu-button:hover,.menu-button[aria-current]{background:var(--soft)}.tabs a{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--muted);padding:6px 10px;border-radius:8px;white-space:nowrap}
 .tabs a[aria-current]{background:var(--soft);color:var(--ink);font-weight:600}.tabs svg{display:none}

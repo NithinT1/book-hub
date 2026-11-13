@@ -5,6 +5,7 @@ import { findReferenceScore, getRules, getSource, listSources, saveCard, saveRul
 import { readMinutes, splitSummary } from "../src/hub/reader";
 import { pinBook } from "../src/library";
 import { nextStatus } from "../src/status";
+import { dismissNotice, listNotices, markNoticesSeen, newNoticeCount } from "../src/notices";
 import { nonfictionProgress, readNonfiction, readQuality, writeNonfiction, writeQuality } from "../src/profile";
 import { DEFAULT_RULES, ensureDefaultRules, FLOWS, RULE_INFO, rulesForFlow } from "../src/rules-defaults";
 import { createSessionCookie } from "../src/session";
@@ -108,7 +109,8 @@ describe("hub screens", () => {
 		expect(rows.map((r) => r.title).indexOf("Higher Fit")).toBeLessThan(rows.map((r) => r.title).indexOf("Lower Fit"));
 		await saveCard(db, low, { markdown: "c", verdict: "idea_only" });
 		expect((await listSources(db, { verdictChanged: true })).map((r) => r.title)).toEqual(["Lower Fit"]);
-		expect(await (await get("/")).text()).toContain("Verdict changed recently");
+		const bell = await (await get("/notifications")).text();
+		expect(bell).toContain("Lower Fit</a>: Read → <strong>Idea only</strong>");
 	});
 	it("the Buy list notes a verdict that moved away from reading, without moving the book", async () => {
 		const id = await book("Listed Then Changed", { library_status: "want_to_buy" });
@@ -259,13 +261,13 @@ describe("book quiz", () => {
 		await saveCard(db, id, { markdown: "c", verdict: "read" });
 		await saveQuiz(db, id, { score: 6, partial: true, ideas });
 		expect((await getSource(db, id))!.verdict_by).toBe("ai");
-		const home = await (await get("/")).text();
-		expect(home).toContain("Finish your quiz");
-		expect(home).toContain(encodeURIComponent("/book-quiz Continue my quiz on Half Done"));
+		const bell = await (await get("/notifications")).text();
+		expect(bell).toContain("Unfinished quiz");
+		expect(bell).toContain(encodeURIComponent("/book-quiz Continue my quiz on Half Done"));
 		expect(await (await get(`/book/${id}`)).text()).toContain("Continue quiz");
 		await saveQuiz(db, id, { score: 4, outcome: "info", verdict: "skip", ideas });
 		expect((await getSource(db, id))!).toMatchObject({ verdict: "read", verdict_by: "ai" });
-		expect(await (await get("/")).text()).not.toContain("Finish your quiz");
+		expect(await (await get("/notifications")).text()).not.toContain("Half Done");
 	});
 	it("progress after every answer stays one record, which the final result completes", async () => {
 		const { saveQuiz, getQuizzes } = await import("../src/db");
@@ -275,7 +277,7 @@ describe("book quiz", () => {
 		let q = await getQuizzes(db, id);
 		expect(q).toHaveLength(1);
 		expect(q[0]).toMatchObject({ partial: true, score: 5 });
-		expect(await (await get("/")).text()).toContain("2 answered");
+		expect(await (await get("/notifications")).text()).toContain("2 answered");
 		await saveQuiz(db, id, { score: 7, outcome: "keep", verdict: "read_parts", ideas });
 		q = await getQuizzes(db, id);
 		expect(q).toHaveLength(1);
@@ -437,7 +439,7 @@ describe("stopped books", () => {
 		const shelf = await (await get("/shelf?status=stopped")).text();
 		expect(shelf).toContain("Long Scripture");
 		expect(shelf).toContain(">Resume<");
-		expect(await (await get("/")).text()).toContain("1 book stopped partway");
+		expect(await (await get("/notifications")).text()).not.toContain("Long Scripture"); // the reminder comes after 30 days
 	});
 	it("stopping without words still works, and Resume brings it back to Reading", async () => {
 		const id = await book("Put Down", { library_status: "own" });
@@ -445,5 +447,44 @@ describe("stopped books", () => {
 		expect((await getSource(db, id))!.library_status).toBe("stopped");
 		await post(`/book/${id}/status`, { event: "note_added" });
 		expect((await getSource(db, id))!.library_status).toBe("reading");
+	});
+});
+
+describe("notifications", () => {
+	const DAY = 86_400_000;
+	it("the bell counts what's new since you last looked; looking clears the count but keeps the items", async () => {
+		const id = await book("Changing Mind");
+		await saveCard(db, id, { markdown: "c", verdict: "read" });
+		await saveCard(db, id, { markdown: "c", verdict: "skip" });
+		expect(await newNoticeCount(db)).toBe(1);
+		expect(await (await get("/")).text()).toContain('<span class="badge">1</span>');
+		expect(await (await get("/notifications?part=1")).text()).toContain("Changing Mind");
+		expect(await newNoticeCount(db)).toBe(0);
+		expect(await (await get("/")).text()).not.toContain('class="badge"');
+		expect((await listNotices(db)).map((n) => n.title)).toEqual(["Changing Mind"]);
+	});
+	it("deleting removes it for good; a stopped-book reminder comes after 30 days and snoozes for 30 more", async () => {
+		const id = await book("Left Aside", { library_status: "reading" });
+		await db.prepare("UPDATE sources SET library_status = 'stopped', status_changed_at = ? WHERE id = ?").bind(new Date(Date.now() - 31 * DAY).toISOString(), id).run();
+		let [n] = await listNotices(db);
+		expect(n).toMatchObject({ kind: "stopped", title: "Left Aside" });
+		const r = await post("/notifications/dismiss", { key: n.key, back: "/" });
+		expect(r.headers.get("location")).toBe("/");
+		expect(await listNotices(db)).toHaveLength(0);
+		expect((await listNotices(db, Date.now() + 31 * DAY))[0]).toMatchObject({ kind: "stopped" });
+		await markNoticesSeen(db);
+		const v = await book("Flip");
+		await saveCard(db, v, { markdown: "c", verdict: "read" });
+		await saveCard(db, v, { markdown: "c", verdict: "skip" });
+		const [flip] = await listNotices(db);
+		await dismissNotice(db, flip.key);
+		expect((await listNotices(db, Date.now() + 365 * DAY)).some((x) => x.title === "Flip")).toBe(false);
+		await post("/notifications/dismiss", { key: "x:1; DROP", back: "https://evil.example" }).then((res) => expect(res.headers.get("location")).toBe("/notifications"));
+	});
+	it("Home no longer carries the banners or the quiz panel", async () => {
+		const home = await (await get("/")).text();
+		expect(home).not.toContain('class="notice-line"');
+		expect(home).not.toContain("Finish your quiz");
+		expect(home).toContain('class="bell-button" href="/notifications"');
 	});
 });

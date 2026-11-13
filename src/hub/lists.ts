@@ -1,7 +1,7 @@
 // Home, Buy list, My shelf, Discover, and all requests.
 
 import { Hono } from "hono";
-import { countVerdictChanges, FIT_LABELS, getCurrency, getRules, getSetting, KINDS, listSources, qualityTimesFit, recentRequests, setSetting, TYPES, unfinishedQuizzes, VERDICTS } from "../db";
+import { FIT_LABELS, getCurrency, getRules, getSetting, KINDS, listSources, qualityTimesFit, recentRequests, setSetting, TYPES, VERDICTS } from "../db";
 import { profileIsEmpty } from "../profile";
 import { showPriceText } from "../currency";
 import { allTags } from "../library";
@@ -43,7 +43,7 @@ export const COMMANDS: [string, string][] = [
 
 lists.get("/", async (c) => {
 	const db = c.env.DB;
-	const [reading, buy, featured, requests, counts, fb, activity, changed, unfinished] = await Promise.all([
+	const [reading, buy, featured, requests, counts, activity] = await Promise.all([
 		// Reading now: my pins first (my current focus), then the rest of what I'm reading.
 		Promise.all([listSources(db, { pinned: true, sort: "pins", limit: 5 }), listSources(db, { status: "reading", sort: "recent", limit: 10 })]).then(([pins, rest]) =>
 			[...pins, ...rest.filter((r) => r.pin_rank == null)].slice(0, Math.max(5, pins.length)),
@@ -52,10 +52,7 @@ lists.get("/", async (c) => {
 		listSources(db, { mostFeatured: true, statuses: ["none", "want_to_buy", "own"], sort: "featured", limit: 200 }),
 		recentRequests(db, 5),
 		db.prepare("SELECT library_status AS s, COUNT(*) AS n FROM sources GROUP BY library_status").all<{ s: string; n: number }>(),
-		db.prepare("SELECT COUNT(*) AS n FROM feedback WHERE status = 'open'").first<{ n: number }>(),
 		db.prepare("SELECT (SELECT COUNT(*) FROM requests) + (SELECT COUNT(*) FROM cards) AS n").first<{ n: number }>(),
-		countVerdictChanges(db),
-		unfinishedQuizzes(db),
 	]);
 	const count = (s: string) => counts.results.find((r) => r.s === s)?.n ?? 0;
 	// Set-up for new hubs: three steps, each skippable; shown until all are done or "Hide for now".
@@ -103,15 +100,9 @@ ${showSetup ? `<section class="setup" aria-label="Set up Book Hub">
   <a href="/buy"><strong>${count("want_to_buy")}</strong><span>Buy list</span></a>
   <a href="/shelf?status=own"><strong>${count("own")}</strong><span>On shelf, not started</span></a>
   <a href="/shelf?status=finished"><strong>${count("finished")}</strong><span>Finished</span></a>
-  ${fb?.n ? `<a href="/feedback"><strong>${fb.n}</strong><span>Open feedback</span></a>` : ""}
 </div>
 
-${count("stopped") ? `<p class="notice-line">${count("stopped")} ${count("stopped") === 1 ? "book" : "books"} stopped partway. <a href="/shelf?status=stopped">Resume or close →</a></p>` : ""}
-${changed ? `<p class="notice-line">${changed} ${changed === 1 ? "book's Verdict" : "books' Verdicts"} changed recently. <a href="/discover?changed=1">See why →</a></p>` : ""}
 
-${unfinished.length ? `<section class="panel"><h2>Finish your quiz</h2><ul class="plain">${unfinished
-			.map((q) => `<li><a href="/book/${q.source_id}">${esc(q.title)}</a> <span class="muted">· stopped ${esc(q.created_at.slice(0, 10))} · ${q.ideas.length} answered · so far you know ${esc(String(q.score))}/10</span> <a class="act" href="${esc(claudeLink(`/book-quiz Continue my quiz on ${q.title}${q.authors[0] ? ` by ${q.authors[0]}` : ""}`))}" target="_blank" rel="noopener">Continue</a></li>`)
-			.join("")}</ul></section>` : ""}
 
 ${reading.length ? `<section class="panel"><h2>Reading now</h2>${list(reading.map((s) => bookRow(s, { back: "/" })), "")}</section>` : ""}
 
