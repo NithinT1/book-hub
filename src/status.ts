@@ -3,7 +3,7 @@
 // Automatic changes (from what the user does) only move forward and never undo a finished or given-away book.
 // Setting a status by hand in the hub can go anywhere.
 
-export const STATUSES = ["none", "want_to_buy", "own", "reading", "finished", "archived", "given_away"] as const;
+export const STATUSES = ["none", "want_to_buy", "own", "reading", "stopped", "finished", "archived", "given_away"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_LABEL: Record<Status, string> = {
@@ -11,6 +11,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 	want_to_buy: "Want to buy",
 	own: "On shelf — not started",
 	reading: "Reading",
+	stopped: "Stopped",
 	finished: "Finished",
 	archived: "Archived",
 	given_away: "Given away",
@@ -49,17 +50,18 @@ export function nextStatus(current: Status, event: StatusEvent): Status | null {
 			return to("own", ["none", "want_to_buy", "archived", "given_away"]);
 		case "note_added":
 		case "discussed":
+			return to("reading", ["none", "want_to_buy", "own", "stopped", "archived"]); // a note on a stopped book resumes it
 		case "rated":
 			return to("reading", ["none", "want_to_buy", "own", "archived"]);
 		case "reviewed":
 		case "finished":
-			return to("finished", ["none", "want_to_buy", "own", "reading", "archived"]);
+			return to("finished", ["none", "want_to_buy", "own", "reading", "stopped", "archived"]);
 		case "archived":
-			return to("archived", ["none", "want_to_buy", "own", "reading", "finished"]);
+			return to("archived", ["none", "want_to_buy", "own", "reading", "stopped", "finished"]);
 		case "given_away":
-			return to("given_away", ["own", "reading", "finished"]);
+			return to("given_away", ["own", "reading", "stopped", "finished"]);
 	}
 }
 
 /** Statuses that mean "I have it / had it" — covers are shown and it belongs on My shelf. */
-export const SHELF_STATUSES: Status[] = ["own", "reading", "finished", "given_away"];
+export const SHELF_STATUSES: Status[] = ["own", "reading", "stopped", "finished", "given_away"];

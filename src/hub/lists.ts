@@ -106,6 +106,7 @@ ${showSetup ? `<section class="setup" aria-label="Set up Book Hub">
   ${fb?.n ? `<a href="/feedback"><strong>${fb.n}</strong><span>Open feedback</span></a>` : ""}
 </div>
 
+${count("stopped") ? `<p class="notice-line">${count("stopped")} ${count("stopped") === 1 ? "book" : "books"} stopped partway. <a href="/shelf?status=stopped">Resume or close →</a></p>` : ""}
 ${changed ? `<p class="notice-line">${changed} ${changed === 1 ? "book's Verdict" : "books' Verdicts"} changed recently. <a href="/discover?changed=1">See why →</a></p>` : ""}
 
 ${unfinished.length ? `<section class="panel"><h2>Finish your quiz</h2><ul class="plain">${unfinished
@@ -153,9 +154,10 @@ ${list(rows.map((s) => bookRow(s, { back: "/buy", price: prices.get(s.id) ?? nul
 // ---- My shelf ----------------------------------------------------------------
 
 const SHELF_VIEWS: [string, string, Status[] | null, string?][] = [
-	["all", "All", ["reading", "own", "finished", "given_away"], undefined],
+	["all", "All", ["reading", "own", "stopped", "finished", "given_away"], undefined],
 	["reading", "Reading", ["reading"]],
 	["own", "Not started", ["own"]],
+	["stopped", "Stopped", ["stopped"]],
 	["finished", "Finished", ["finished"]],
 	["summary", "Read via summary", ["archived"], "read_via_summary"],
 	["given_away", "Given away", ["given_away"]],

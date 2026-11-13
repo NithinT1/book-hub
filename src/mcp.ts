@@ -49,11 +49,11 @@ Never invent books, ratings, prices, quotes or endorsements. There is no delete 
 Results include hub_url links; end answers with them so the user can continue in the hub.`;
 
 const STATUS_HELP =
-	"none (not decided) | want_to_buy (Buy list) | own (on shelf, not started) | reading | finished | archived | given_away. Old name on_shelf = own.";
+	"none (not decided) | want_to_buy (Buy list) | own (on shelf, not started) | reading | stopped (put down partway; only when the user says so) | finished | archived | given_away. Old name on_shelf = own.";
 
 // The connector deliberately has no delete tools.
 export function createServer(context?: { requestInfo?: Request }) {
-	const server = new McpServer({ name: "Book Hub", version: "2.10.1" }, { instructions: INSTRUCTIONS });
+	const server = new McpServer({ name: "Book Hub", version: "2.11.0" }, { instructions: INSTRUCTIONS });
 	const login = getMcpAuthContext()?.props?.login as string | undefined;
 	const db = env.DB;
 	// Links in answers point at this hub: HUB_URL if set, else the address the connector was reached on.

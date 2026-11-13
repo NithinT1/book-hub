@@ -76,7 +76,7 @@ book.get("/book/:id", async (c) => {
 	const [appearances, discussions, summaries, currency] = await Promise.all([getAppearances(db, id), listDiscussions(db, { sourceId: id, limit: 50 }), listSummaries(db, { sourceId: id, limit: 20 }), getCurrency(db)]);
 	const by = s.authors[0] ? ` by ${s.authors[0]}` : "";
 	const card = s.research.card;
-	const tab = s.library_status === "want_to_buy" ? "buy" : ["own", "reading", "finished", "given_away"].includes(s.library_status) ? "shelf" : "discover";
+	const tab = s.library_status === "want_to_buy" ? "buy" : ["own", "reading", "stopped", "finished", "given_away"].includes(s.library_status) ? "shelf" : "discover";
 	const back = encodeURIComponent(`/book/${id}`);
 
 	return c.html(
@@ -265,9 +265,10 @@ ${older.length ? `<details><summary>Earlier quizzes (${older.length})</summary><
 	}
 
 	function reviewPanel(s: SourceDetail) {
-		const show = s.review || ["reading", "own", "finished"].includes(s.library_status);
+		const stopping = c.req.query("stop") === "1" && ["reading", "own"].includes(s.library_status);
+		const show = s.review || stopping || ["reading", "own", "stopped", "finished"].includes(s.library_status);
 		if (!show) return "";
-		const editing = !s.review || c.req.query("edit_review") === "1";
+		const editing = !s.review || stopping || c.req.query("edit_review") === "1";
 		if (!editing)
 			return `<section class="panel" id="review"><h2>My review <a href="/book/${id}?edit_review=1#review"${tip("editReview")}>Edit</a></h2>
 <p><strong>${s.rating != null ? `${s.rating}/10` : "No rating"}</strong>${s.reread ? ` · Re-read: ${esc(s.reread)}` : ""}</p><div class="md">${renderMarkdown(s.review!.text)}</div></section>`;
@@ -275,19 +276,22 @@ ${older.length ? `<details><summary>Earlier quizzes (${older.length})</summary><
 		const ratingOptions = Array.from({ length: 11 }, (_, n) => `<option value="${n}"${s.rating === n ? " selected" : ""}>${n}</option>`).join("");
 		const field = (key: string, label: string, rows: number) =>
 			`<label class="field">${esc(label)}${rows === 1 ? `<input name="r_${key}" value="${esc(f[key as keyof typeof f] ?? "")}">` : `<textarea name="r_${key}" rows="${rows}">${esc(f[key as keyof typeof f] ?? "")}</textarea>`}</label>`;
-		return `<section class="panel" id="review"><h2>${s.review ? "Edit review" : "Review"}</h2>
-<form method="post" action="/book/${id}/review" class="stack review-form">
+		const stopped = stopping || s.library_status === "stopped";
+		const sections = REVIEW_SECTIONS.filter(([k]) => k !== "stopped" || stopped || f.stopped);
+		return `<section class="panel" id="review"><h2>${stopping ? "Stop reading" : s.review ? "Edit review" : "Review"}</h2>
+${stopping ? `<p class="muted">It moves to My shelf → Stopped and leaves your pins. Fill in what you like; you can resume any time.</p>` : ""}
+<form method="post" action="/book/${id}/review" class="stack review-form">${stopping ? `<input type="hidden" name="stop" value="1">` : ""}
   <div class="inline-fields">
     <label>Rating <select name="rating"><option value="">—</option>${ratingOptions}</select> / 10</label>
     <span>Re-read? ${["yes", "maybe", "no"].map((r) => `<label class="choice inline"><input type="radio" name="reread" value="${r}"${s.reread === r ? " checked" : ""}> ${r}</label>`).join(" ")}</span>
   </div>
-  ${REVIEW_SECTIONS.map(([k, label]) => field(k, label, k === "verdict" ? 1 : 3)).join("\n  ")}
+  ${sections.map(([k, label]) => field(k, label, k === "verdict" ? 1 : 3)).join("\n  ")}
   <div class="inline-fields">
-    ${s.library_status !== "finished" ? `<label class="choice"><input type="checkbox" name="finished" value="1" checked> I've finished it</label>` : ""}
-    <label class="muted">Finished on <input type="date" name="finished_on" value="${esc(s.finished_on ?? "")}"></label>
-    <button class="btn"${tip("saveReview")}>Save review</button>
+    ${stopping ? "" : s.library_status !== "finished" ? `<label class="choice"><input type="checkbox" name="finished" value="1"${stopped ? "" : " checked"}> I've finished it</label>` : ""}
+    ${stopping ? "" : `<label class="muted">Finished on <input type="date" name="finished_on" value="${esc(s.finished_on ?? "")}"></label>`}
+    <button class="btn"${tip(stopping ? "stopReading" : "saveReview")}>${stopping ? "Save and stop" : "Save review"}</button>
   </div>
-  <p class="muted">Fill in what you like — empty sections are left out. Rating mid-book? Untick “I've finished it”.</p>
+  ${stopping ? "" : `<p class="muted">Fill in what you like — empty sections are left out. Rating mid-book? Untick “I've finished it”.</p>`}
 </form></section>`;
 	}
 });
@@ -467,6 +471,13 @@ book.post("/book/:id/review", async (c) => {
 	const form = await c.req.formData();
 	const fromFields = reviewToMarkdown(Object.fromEntries(REVIEW_SECTIONS.map(([k]) => [k, String(form.get(`r_${k}`) ?? "").replace(/\r\n/g, "\n")])));
 	const body = (fromFields || String(form.get("body") ?? "")).replace(/\r\n/g, "\n").trim();
+	if (!body && form.get("stop") === "1") {
+		// Stopping needs no words: keep any rating and move it.
+		const rating = String(form.get("rating") ?? "");
+		if (rating !== "") await c.env.DB.prepare("UPDATE sources SET rating = ? WHERE id = ?").bind(Math.max(0, Math.min(10, Math.round(Number(rating)))), id).run();
+		await setStatus(c.env.DB, id, "stopped");
+		return c.redirect(`/book/${id}`, 303);
+	}
 	if (!body) return c.redirect(`/book/${id}#review`, 303);
 	const s = await getSource(c.env.DB, id);
 	if (!s) return notFound(c, id);
@@ -479,6 +490,7 @@ book.post("/book/:id/review", async (c) => {
 		finished: s.library_status === "finished" || form.get("finished") === "1",
 		finished_on: date(form.get("finished_on")),
 	});
+	if (form.get("stop") === "1" && ["reading", "own"].includes(s.library_status)) await setStatus(c.env.DB, id, "stopped");
 	return c.redirect(`/book/${id}#review`, 303);
 });
 

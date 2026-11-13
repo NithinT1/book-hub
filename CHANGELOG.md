@@ -4,6 +4,19 @@ All notable changes to Book Hub. Versions follow [semantic versioning](https://s
 
 Each entry says whether you need to **re-upload skills** or **reconnect the connector** after updating (see [Updating](docs/SETUP.md#updating)).
 
+## [2.11.0] — Long summaries you can read, and Stopped books
+
+**After updating:** re-upload the `book-summary` skill, push the changed rules (`node scripts/push-rules.mjs summary checkin shelf connector-guide`), and reconnect the connector.
+
+### Added
+- **Summary reading view:** contents beside the text (a sheet on phones), reading progress and time left, Book or Clean text and three sizes (remembered on the device), a version picker, **Download PDF** and **Improve in Claude**.
+- **Richer long summaries:** "Can this summary replace the book?" up front, pictures (the AI's own diagrams and free-to-reuse images), short exact quotes with sources, "What this means for you", a recap with a Book Quiz link, and an honest "Did this summary do the book justice?" at the end. Asking again improves the saved summary instead of starting over.
+- **Stopped:** a status for books put down partway. "Stop reading" (under ⋯) asks for a rating and why; the book stays on My shelf under Stopped and leaves your pins. Resume, or a new note, brings it back to Reading. Home and Check-in remind you about stopped books.
+
+### Fixed
+- Pictures in summaries and notes now show instead of their code.
+- Reading time ignores pictures.
+
 ## [2.10.1] — Book Quiz on Home
 
 ### Added

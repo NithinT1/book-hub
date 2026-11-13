@@ -45,7 +45,7 @@ describe("status rules (pure)", () => {
 	it("accepts v1 names", () => {
 		expect(toStatus("on_shelf")).toBe("own");
 		expect(toStatus("nonsense")).toBeUndefined();
-		expect(STATUSES).toHaveLength(7);
+		expect(STATUSES).toHaveLength(8);
 	});
 });
 

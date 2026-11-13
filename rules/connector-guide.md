@@ -19,8 +19,8 @@ Read this before saving anything.
 - If `save_source` returns `possible_duplicates`, show the candidates and ask: same book (`merge_into`) or different (`confirm_new: true`).
 
 ## Statuses
-Seven statuses: not decided (`none`), `want_to_buy` (Buy list), `own` (on shelf, not started), `reading`, `finished`, `archived`, `given_away`.
-- **Don't set or ask about status unless the user says something about it.** The hub moves statuses automatically from the user's actions: a note or discussion → reading; a review → finished; "bought" → own.
+Eight statuses: not decided (`none`), `want_to_buy` (Buy list), `own` (on shelf, not started), `reading`, `stopped` (put down partway, still on the shelf), `finished`, `archived`, `given_away`.
+- **Don't set or ask about status unless the user says something about it.** The hub moves statuses automatically from the user's actions: a note or discussion → reading (this also resumes a stopped book); a review → finished; "bought" → own. Only the user stops a book.
 - When the user does say it ("add to my buy list", "I bought it second-hand for 250", "I gave it away", "archive it — the summary was enough"), call `set_library_status` with the details.
 - Never ask follow-up questions like "did you buy it?" or "should I archive it?". The user updates the hub when they want to.
 

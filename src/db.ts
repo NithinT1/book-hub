@@ -490,7 +490,7 @@ export async function listSources(
  * Within each group: ★ keeps coming up → Quality × Fit → timeless → most-featured count → most recent.
  * Books without scores yet (older cards) fall back on timeless.
  */
-const STATUS_ORDER: Record<string, number> = { none: 0, own: 1, finished: 2, given_away: 3, archived: 4, reading: 5, want_to_buy: 6 };
+const STATUS_ORDER: Record<string, number> = { none: 0, own: 1, stopped: 2, finished: 2, given_away: 3, archived: 4, reading: 5, want_to_buy: 6 };
 const TIMELESS_ORDER: Record<string, number> = { yes: 0, too_new_promising: 1, not_applicable: 2, too_new_not: 4, no: 5 };
 function bestFirst(a: ListedSource, b: ListedSource) {
 	return (
@@ -526,8 +526,8 @@ export type ListedSource = Source & {
 };
 
 const SORTS = {
-	// My shelf: Reading → Not started → Finished, review pending → Finished & reviewed → Read via summary → Given away.
-	library: `CASE s.library_status WHEN 'reading' THEN 0 WHEN 'own' THEN 1
+	// My shelf: Reading → Not started → Stopped → Finished, review pending → Finished & reviewed → Read via summary → Given away.
+	library: `CASE s.library_status WHEN 'reading' THEN 0 WHEN 'own' THEN 1 WHEN 'stopped' THEN 1.5
 		WHEN 'finished' THEN (CASE WHEN EXISTS (SELECT 1 FROM notes n WHERE n.source_id = s.id AND n.kind = 'review') THEN 3 ELSE 2 END)
 		WHEN 'archived' THEN 4 WHEN 'given_away' THEN 5 ELSE 6 END, s.status_changed_at DESC, s.title COLLATE NOCASE`,
 	buy: "s.buy_rank IS NULL, s.buy_rank, s.title COLLATE NOCASE",
@@ -977,6 +977,7 @@ export async function getReadingProfile(db: D1Database) {
 		reading: group("reading"),
 		finished: group("finished"),
 		own_not_started: group("own"),
+		stopped: group("stopped"),
 		want_to_buy: group("want_to_buy"),
 		read_via_summary: group("archived", "read_via_summary"),
 		archived_never_recommend: (books.results as any[]).filter((b) => b.library_status === "archived").map(line),

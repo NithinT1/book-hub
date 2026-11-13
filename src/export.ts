@@ -4,7 +4,7 @@ import { getResearch, listDiscussions, listSources, listSummaries } from "./db";
 import { ARCHIVE_LABEL, STATUS_LABEL, type ArchiveReason, type Status } from "./status";
 
 /** Export order: what matters most first. "Not decided" recommendations are listed briefly at the end. */
-const ORDER: Status[] = ["reading", "finished", "own", "want_to_buy", "given_away", "archived", "none"];
+const ORDER: Status[] = ["reading", "stopped", "finished", "own", "want_to_buy", "given_away", "archived", "none"];
 
 export async function buildMarkdownExport(db: D1Database): Promise<string> {
 	const [sources, discussions, summaries, notes, editions] = await Promise.all([

@@ -41,7 +41,7 @@ Book Hub is a calm, personal reading assistant for these moments. It filters eve
 | **"I need a book on…"** | Ask for recommendations on a topic, a question or "books like X". A short ranked list, never padded. Fewer, or none, if nothing good fits. |
 | **"It keeps coming up."** | ★ **Most featured** marks books recommended across separate requests, so the ones that really matter rise above the noise. |
 | **"Do I even need to read it?"** | **Book Quiz** (`/book-quiz`): about 5–10 minutes of questions on the book's core ideas, built so common sense can't answer them. You get **"You already know: X/10"** and a Verdict: skip it, read just the parts you're missing, read it, or practise instead of reading. |
-| **"Is it worth a week of my time?"** | A **long summary** (30–60 minutes) with an honest critique, when one good idea doesn't need 300 pages. |
+| **"Is it worth a week of my time?"** | A **long summary** (30–60 minutes) with pictures, an honest critique and a straight answer to "can this replace the book?", in a reading view with contents, versions and PDF download. |
 | **"Help me understand this."** | **Discuss** a chapter or idea while you read; your AI uses your notes and past discussions. Saved to your hub. |
 | **"Should I buy it, and how?"** | The Verdict says whether to read it at all, and how to get it: first-hand, second-hand, Kindle or a summary, following your buying preferences. The **Buy list** keeps your order and the last-known price. |
 | **"I'm in a second-hand bookstore."** | Snap a price tag: buy or skip, and the discount versus new. Snap a whole rack: up to five gems worth picking. |

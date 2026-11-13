@@ -14,7 +14,7 @@ For book names or a shelf photo, when the user asks what to give away.
 1. Identify the books; `get_source` for each (status, rating, review, notes, Timeless, Verdict).
 2. Table with **only the books worth giving away** — not the keepers:
    | Book | Why it can go | Timeless / fit reminder | My rating | Suggested price (range, user's currency) |
-   - Good candidates: Verdict Skip or Idea only, not timeless, low rating or "re-read: no", one idea you already got, duplicates, Kindle copy also owned.
+   - Good candidates: stopped with a low rating, Verdict Skip or Idea only, not timeless, low rating or "re-read: no", one idea you already got, duplicates, Kindle copy also owned.
    - Never suggest: timeless books, Verdict Reread, "re-read: yes", high ratings, Kindle-only books (can't be given away).
    - Price: a second-hand range from condition-typical resale (roughly 25–50% of new); say it's an estimate.
 3. Then one line: "Keeping the rest because…".

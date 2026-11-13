@@ -3,6 +3,8 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { findReferenceScore, getRules, getSource, listSources, saveCard, saveRule, saveSource, saveSummary, setVerdict } from "../src/db";
 import { readMinutes, splitSummary } from "../src/hub/reader";
+import { pinBook } from "../src/library";
+import { nextStatus } from "../src/status";
 import { nonfictionProgress, readNonfiction, readQuality, writeNonfiction, writeQuality } from "../src/profile";
 import { DEFAULT_RULES, ensureDefaultRules, FLOWS, RULE_INFO, rulesForFlow } from "../src/rules-defaults";
 import { createSessionCookie } from "../src/session";
@@ -405,5 +407,43 @@ describe("long summary reading view", () => {
 		expect(page).toContain("[hidden]{display:none!important}");
 		const one = await (await get(`/summary/${v1!.id}`)).text();
 		expect(one).toContain(`<option value="${v1!.id}" selected>`);
+	});
+});
+
+describe("stopped books", () => {
+	it("a note resumes a stopped book; a rating alone doesn't; finishing, archiving and giving away still work", () => {
+		expect(nextStatus("stopped", "note_added")).toBe("reading");
+		expect(nextStatus("stopped", "discussed")).toBe("reading");
+		expect(nextStatus("stopped", "rated")).toBeNull();
+		expect(nextStatus("stopped", "reviewed")).toBe("finished");
+		expect(nextStatus("stopped", "archived")).toBe("archived");
+		expect(nextStatus("stopped", "given_away")).toBe("given_away");
+	});
+	it("Stop reading saves the rating and why, moves it to Stopped, unpins it, and shows it on My shelf and Home", async () => {
+		const id = await book("Long Scripture", { library_status: "reading" });
+		await pinBook(db, id);
+		expect(await (await get("/shelf")).text()).toContain(`/book/${id}?stop=1#review`);
+		const form = await (await get(`/book/${id}?stop=1`)).text();
+		expect(form).toContain("<h2>Stop reading</h2>");
+		expect(form).toContain("Why I stopped");
+		expect(form).not.toContain("I've finished it");
+		const r = await post(`/book/${id}/review`, { stop: "1", rating: "7", r_stopped: "Read 5 chapters; too devotional for me." });
+		expect(r.status).toBe(303);
+		const s = (await getSource(db, id))!;
+		expect(s.library_status).toBe("stopped");
+		expect(s.rating).toBe(7);
+		expect(s.pin_rank).toBeNull();
+		expect(s.review!.text).toContain("## Why I stopped");
+		const shelf = await (await get("/shelf?status=stopped")).text();
+		expect(shelf).toContain("Long Scripture");
+		expect(shelf).toContain(">Resume<");
+		expect(await (await get("/")).text()).toContain("1 book stopped partway");
+	});
+	it("stopping without words still works, and Resume brings it back to Reading", async () => {
+		const id = await book("Put Down", { library_status: "own" });
+		await post(`/book/${id}/review`, { stop: "1", rating: "" });
+		expect((await getSource(db, id))!.library_status).toBe("stopped");
+		await post(`/book/${id}/status`, { event: "note_added" });
+		expect((await getSource(db, id))!.library_status).toBe("reading");
 	});
 });

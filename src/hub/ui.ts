@@ -73,6 +73,8 @@ export const HELP = {
 	buy: ["Add to Buy list", "Puts this book at the bottom of your Buy list. Reorder it on the Buy list tab."],
 	bought: ["Bought it", "Record how you bought it (first-hand, second-hand or Kindle) and the price. Moves it to My shelf → Not started and off the Buy list."],
 	startReading: ["Start reading", "Moves it to Reading. Adding a note does this automatically."],
+	stopReading: ["Stop reading", "For a book you've put down partway. Rate it and say why you stopped; it moves to My shelf → Stopped and leaves your pins. Resume any time."],
+	resume: ["Resume", "Moves it back to Reading. Adding a note does this too."],
 	finish: ["Finished — write review", "Jumps to the review form. Saving the review marks the book Finished."],
 	give: ["Give away", "Record that you gave it away (optional price). It moves to My shelf → Given away; your notes and review stay."],
 	archive: ["Archive", "Hides it from your lists and Claude never recommends it again. You pick why: “Not useful” or “Read via summary” (which shows on My shelf). Undo any time from the book page."],
@@ -108,7 +110,7 @@ export const statusLabel = (s: Source) =>
 
 export function statusBadge(s: Source) {
 	if (s.library_status === "none") return "";
-	const cls = ({ finished: "ok", reading: "live", want_to_buy: "buy", archived: "muted-tag", given_away: "muted-tag" } as Record<string, string>)[s.library_status] ?? "";
+	const cls = ({ finished: "ok", reading: "live", stopped: "muted-tag", want_to_buy: "buy", archived: "muted-tag", given_away: "muted-tag" } as Record<string, string>)[s.library_status] ?? "";
 	return `<span class="tag ${cls}">${esc(s.library_status === "archived" && s.archive_reason === "read_via_summary" ? "Read via summary" : STATUS_LABEL[s.library_status])}</span>`;
 }
 
@@ -196,7 +198,11 @@ export function rowActions(s: ListedSource, o: RowOptions = {}): { html: string;
 		// Notes are the everyday action; Discuss is for the occasional complex book, so it never leads.
 		case "reading":
 			main = [note, discuss];
-			extra = [link(`/book/${s.id}#review`, "Finish & review", "finish")];
+			extra = [link(`/book/${s.id}#review`, "Finish & review", "finish"), link(`/book/${s.id}?stop=1#review`, "Stop reading", "stopReading")];
+			break;
+		case "stopped":
+			main = [form("status", "Resume", "resume", `<input type="hidden" name="event" value="note_added">`), note];
+			extra = [link(`/book/${s.id}#review`, "Finish & review", "finish"), archive];
 			break;
 		case "finished":
 			main = s.has_review ? [note, link(`/book/${s.id}?edit_review=1#review`, "Edit review", "editReview")] : [link(`/book/${s.id}#review`, "Review", "review"), note];

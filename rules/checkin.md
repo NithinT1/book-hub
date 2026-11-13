@@ -12,7 +12,8 @@ Triggered by `/book-checkin`. Two parts: what to read next, and what's pending.
 
 ## 2. Pending actions
 List only what needs attention, briefly:
-- Reading for more than 60 days — still reading, finished, or drop it?
+- Reading for more than 60 days — still reading, finished, or stop it?
+- Stopped books (in `stopped`), longest first: resume, finish, or close it (archive, or give away if owned) with a rating and a line on why.
 - Finished without a review or rating.
 - Buy list: the oldest items, any price worth refreshing, books whose Verdict is no longer Read, and the top 2 never quizzed (with a /book-quiz link line).
 - Quizzes stopped midway: offer to continue them.

@@ -184,6 +184,7 @@ export async function saveReview(db: D1Database, id: number, r: ReviewInput) {
 
 /** The review template's sections. Stored together as markdown ("## Heading" + text) so Claude and the export read it. */
 export const REVIEW_SECTIONS = [
+	["stopped", "Why I stopped"], // only for books put down partway
 	["verdict", "One-line verdict"],
 	["takeaways", "What I took away"],
 	["flaws", "What I didn't like / what challenged me / flaws"],

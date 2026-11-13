@@ -25,7 +25,7 @@ The two talk through a **connector** using MCP (Model Context Protocol), the ope
 
 ## A book's life
 
-Seven statuses, moved by what you do rather than by bookkeeping:
+Eight statuses, moved by what you do rather than by bookkeeping:
 
 ```mermaid
 stateDiagram-v2
@@ -36,6 +36,8 @@ stateDiagram-v2
     NotStarted --> Reading: first note or discussion
     BuyList --> Reading: first note
     Reading --> Finished: review saved
+    Reading --> Stopped: Stop reading (rating + why)
+    Stopped --> Reading: Resume or a new note
     NotDecided --> Archived: not useful / read via summary
     NotStarted --> GivenAway: given away
     Finished --> GivenAway: given away
