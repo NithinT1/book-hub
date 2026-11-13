@@ -53,6 +53,10 @@ navigator.clipboard.writeText(q).then(()=>{const t=document.createElement("div")
 // ---- What each action does (hover tooltips) ----
 
 export const HELP = {
+	pin: ["Pin to focus", "Keeps this book at the top of My shelf and Home as one of your current focus books (up to 5)."],
+	unpin: ["Unpin", "Removes it from your focus pins. The book stays on My shelf."],
+	pinUp: ["Move up", "Move this pin up."],
+	pinDown: ["Move down", "Move this pin down."],
 	quiz: ["Book Quiz", "Opens your AI app with /book-quiz. About 5–10 minutes of questions on the book's core ideas, then \"You already know: X/10\" and a Verdict: skip it, read parts, read it, or practise instead. Saved here."],
 	recs: ["Recommend books", "Opens your AI app with /book-recs and your topic typed in. Claude reads your rules, picks up to 5 books fresh for the topic (fewer if fewer fit), labels any already in your hub, saves them to Discover and links back here."],
 	details: ["Book details", "Opens your AI app with /book-details. For one or more named books (or a link to a list): a full card, ranking and buy verdict. The research is saved, so asking again later is quick."],
@@ -123,7 +127,7 @@ const ICON = {
 	hide: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>`,
 };
 
-export type RowOptions = { hideFeatured?: boolean; back?: string; price?: string | null; reorder?: boolean; inline?: boolean; verdictNote?: boolean };
+export type RowOptions = { hideFeatured?: boolean; back?: string; price?: string | null; reorder?: boolean; inline?: boolean; verdictNote?: boolean; pins?: boolean };
 
 const ACT_ICON: Record<string, string> = {
 	discuss: `<path d="M4 5h16v11H9l-5 4z"/>`,
@@ -202,7 +206,11 @@ export function rowActions(s: ListedSource, o: RowOptions = {}): { html: string;
 			break;
 	}
 	const buttons = main.filter((a): a is Act => Boolean(a)).map((a, i) => a(i === 0 ? "act primary" : "act"));
-	const rest = [...extra, quiz].filter((a): a is Act => Boolean(a));
+	// Pin to focus (My shelf): under ⋯ in lists; the book page has its own quiet link.
+	const pin = !o.inline && ["own", "reading"].includes(s.library_status)
+		? s.pin_rank != null ? form("unpin", "Unpin", "unpin") : form("pin", "Pin to focus", "pin")
+		: null;
+	const rest = [...extra, pin, quiz].filter((a): a is Act => Boolean(a));
 	// On the book page there's room, so everything shows as buttons; in lists the rest sit under ⋯.
 	const more = !rest.length ? ""
 		: o.inline ? rest.map((a) => a("act")).join("")
@@ -217,12 +225,20 @@ function rankControls(s: ListedSource, back: string) {
 	return `<div class="rank"><b>${s.buy_rank ?? ""}</b>${move("up", "moveUp")}${move("down", "moveDown")}</div>`;
 }
 
+/** Pin order: up/down in its own column, like the Buy list. */
+function pinControls(s: ListedSource, back: string, position: number) {
+	const move = (dir: "up" | "down", key: HelpKey) =>
+		`<form method="post" action="/book/${s.id}/pin-move"><input type="hidden" name="back" value="${esc(back)}"><input type="hidden" name="dir" value="${dir}"><button${tip(key)} aria-label="${esc(HELP[key][0])}">${svg(dir)}</button></form>`;
+	return `<div class="rank"><b>${position}</b>${move("up", "pinUp")}${move("down", "pinDown")}</div>`;
+}
+
 /** One book in a list: title, author, spoiler-free one-liner, tags — plus its actions. */
 export function bookRow(s: ListedSource, o: RowOptions = {}) {
 	// A tag that just repeats the type or kind ("fiction" next to Fiction) is noise.
 	const shown = new Set([s.type, s.type && TYPE_LABEL[s.type].toLowerCase(), s.type === "nonfiction" && "non fiction", s.kind !== "book" && KIND_LABEL[s.kind].toLowerCase()].filter(Boolean));
 	const topicTags = s.tags.filter((t) => !shown.has(t));
 	const tags = [
+		s.pin_rank != null && !o.pins ? `<span class="tag pin">📌 Pinned</span>` : "",
 		s.most_featured ? `<span class="tag star">★ Most featured</span>` : "",
 		statusBadge(s),
 		s.verdict ? `<span class="tag buy">Verdict: ${esc(verdictText(s.verdict))}</span>` : "",
@@ -239,10 +255,11 @@ export function bookRow(s: ListedSource, o: RowOptions = {}) {
 	].join("");
 	const actions = rowActions(s, o).html;
 	const ranked = o.reorder && s.library_status === "want_to_buy";
+	const pinned = o.pins && s.pin_rank != null;
 	const dismiss = o.hideFeatured
 		? `<form method="post" action="/book/${s.id}/hide-featured" class="dismiss"><input type="hidden" name="back" value="${esc(o.back ?? "/")}"><button${tip("hideFeatured")} aria-label="Hide from this section">${svg("hide")}</button></form>`
 		: "";
-	return `<li class="book${dismiss ? " dismissable" : ""}">${dismiss}${ranked ? rankControls(s, o.back ?? "/buy") : ""}<a class="row" href="/book/${s.id}">${cover(s, "thumb")}<span class="row-text">
+	return `<li class="book${dismiss ? " dismissable" : ""}">${dismiss}${ranked ? rankControls(s, o.back ?? "/buy") : ""}${pinned ? pinControls(s, o.back ?? "/shelf", s.pin_rank!) : ""}<a class="row" href="/book/${s.id}">${cover(s, "thumb")}<span class="row-text">
   <strong>${!ranked && s.library_status === "want_to_buy" && s.buy_rank ? `${s.buy_rank}. ` : ""}${esc(s.title)}</strong>
   <span class="muted">${esc(s.authors.join(", ") || "Author unknown")}${s.year ? ` · ${yearText(s.year)}` : ""}${o.price ? ` · ${esc(o.price)}` : ""}${s.library_status === "want_to_buy" && s.buy_format ? ` · prefer ${esc(BUY_FORMAT_LABEL[s.buy_format as BuyFormat])}` : ""}</span>
   ${s.one_liner ? `<span class="one-liner">${esc(s.one_liner)}</span>` : ""}
@@ -384,7 +401,7 @@ details.more-menu{position:relative;border:0;padding:0}.more-menu summary{list-s
 @media (max-width:640px){.book{flex-wrap:wrap}.row-actions{flex:1 0 100%;justify-content:flex-end;padding:0 4px 10px}.store-btns{width:100%;flex-direction:column}}
 .icon{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}.icon:hover{background:var(--soft);color:var(--ink)}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}.tag{font-size:.76rem;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--muted);text-decoration:none}
-.tag.ok{background:#e8f5ec;color:var(--ok)}.tag.star{background:#fff4d6;color:var(--star)}.tag.live{background:#f1e9fd;color:var(--live)}.tag.buy{background:#eceef2;color:var(--ink)}.tag.topic{background:#fff;border:1px solid var(--line)}.tag.muted-tag{background:#f0f0f0;color:#888}
+.tag.pin{background:#17181b;color:#fff}.tag.ok{background:#e8f5ec;color:var(--ok)}.tag.star{background:#fff4d6;color:var(--star)}.tag.live{background:#f1e9fd;color:var(--live)}.tag.buy{background:#eceef2;color:var(--ink)}.tag.topic{background:#fff;border:1px solid var(--line)}.tag.muted-tag{background:#f0f0f0;color:#888}
 .cover{flex:none;border-radius:4px;object-fit:cover;background:var(--soft);display:inline-flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700}
 .cover.thumb{width:40px;height:60px}.cover.large{width:110px;height:165px;font-size:2rem}
 .book-head{display:flex;gap:18px;align-items:flex-start;margin:8px 0 16px}

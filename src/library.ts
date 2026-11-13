@@ -59,6 +59,7 @@ async function writeStatus(db: D1Database, id: number, from: Status, to: Status,
 	const set = (col: string, v: unknown) => (sets.push(`${col} = ?`), vals.push(v));
 
 	if (from === "want_to_buy" && to !== "want_to_buy") set("buy_rank", null);
+	if (!PINNABLE.includes(to)) set("pin_rank", null); // finished, given away, archived…: no longer a current focus
 	if (to === "want_to_buy") {
 		const max = await db.prepare("SELECT COALESCE(MAX(buy_rank), 0) AS m FROM sources WHERE library_status = 'want_to_buy'").first<{ m: number }>();
 		set("buy_rank", (max?.m ?? 0) + 1);
@@ -93,6 +94,7 @@ async function writeStatus(db: D1Database, id: number, from: Status, to: Status,
 		}
 	}
 	await db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, id).run();
+	if (!PINNABLE.includes(to)) await renumberPins(db);
 }
 
 const CURRENCY_NOW = "COALESCE((SELECT value FROM settings WHERE key = 'currency'), 'USD')";
@@ -117,6 +119,48 @@ export async function moveOnBuyList(db: D1Database, id: number, direction: "up" 
 	if (i < 0 || j < 0 || j >= order.length) return false;
 	[order[i], order[j]] = [order[j], order[i]];
 	await db.batch(order.map((sid, k) => db.prepare("UPDATE sources SET buy_rank = ? WHERE id = ?").bind(k + 1, sid)));
+	return true;
+}
+
+// ---- Pins on My shelf ----------------------------------------------------------
+
+export const MAX_PINS = 5;
+export const PINNABLE: string[] = ["own", "reading"];
+
+async function pinOrder(db: D1Database) {
+	const { results } = await db.prepare("SELECT id FROM sources WHERE pin_rank IS NOT NULL ORDER BY pin_rank, id").all<{ id: number }>();
+	return results.map((r) => r.id);
+}
+
+async function renumberPins(db: D1Database, order?: number[]) {
+	const ids = order ?? (await pinOrder(db));
+	if (ids.length) await db.batch(ids.map((sid, k) => db.prepare("UPDATE sources SET pin_rank = ? WHERE id = ?").bind(k + 1, sid)));
+}
+
+/** Pin a shelf book (Reading or Not started) at the end of the pins. Refuses when 5 are pinned already. */
+export async function pinBook(db: D1Database, id: number): Promise<"pinned" | "already" | "full" | "not_on_shelf"> {
+	const s = await db.prepare("SELECT library_status, pin_rank FROM sources WHERE id = ?").bind(id).first<{ library_status: string; pin_rank: number | null }>();
+	if (!s || !PINNABLE.includes(s.library_status)) return "not_on_shelf";
+	if (s.pin_rank != null) return "already";
+	const order = await pinOrder(db);
+	if (order.length >= MAX_PINS) return "full";
+	await db.prepare("UPDATE sources SET pin_rank = ? WHERE id = ?").bind(order.length + 1, id).run();
+	return "pinned";
+}
+
+export async function unpinBook(db: D1Database, id: number) {
+	await db.prepare("UPDATE sources SET pin_rank = NULL WHERE id = ?").bind(id).run();
+	await renumberPins(db);
+}
+
+/** Move a pin one place up or down. */
+export async function movePin(db: D1Database, id: number, direction: "up" | "down") {
+	const order = await pinOrder(db);
+	const i = order.indexOf(id);
+	const j = direction === "up" ? i - 1 : i + 1;
+	if (i < 0 || j < 0 || j >= order.length) return false;
+	[order[i], order[j]] = [order[j], order[i]];
+	await renumberPins(db, order);
 	return true;
 }
 

@@ -37,3 +37,5 @@ INSERT INTO quizzes (source_id, score, mode, partial, outcome, verdict, verdict_
 (7, 6.4, 'scan', 0, 'keep', 'read_parts', 'you already know 6.4/10', '[{"idea":"How the age of the Earth was worked out","core":true,"result":"held","note":"Radiometric dating, after a century of wrong guesses"},{"idea":"Why the dinosaurs died out","core":true,"result":"partly","note":"An asteroid impact, accepted only in the 1990s"},{"idea":"How small and recent our species is","result":"new","note":"Humans are a blink in Earth''s history"}]', '["Why the dinosaurs died out","How small and recent our species is"]', 'Part 3 and Part 6', 'high', '**What the book holds:** how scientists found out what we know, told through the people who did it.'),
 (4, 5.0, 'scan', 1, NULL, NULL, NULL, '[{"idea":"Win without fighting","core":true,"result":"held"}]', '[]', NULL, 'medium', NULL);
 UPDATE sources SET verdict = 'read_parts', verdict_why = 'you already know 6.4/10', verdict_by = 'quiz', verdict_how = NULL WHERE id = 7;
+UPDATE sources SET pin_rank = 1 WHERE id = 4;
+UPDATE sources SET pin_rank = 2 WHERE id = 3;

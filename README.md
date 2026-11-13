@@ -45,7 +45,7 @@ Book Hub is a calm, personal reading assistant for these moments. It filters eve
 | **"Help me understand this."** | **Discuss** a chapter or idea while you read; your AI uses your notes and past discussions. Saved to your hub. |
 | **"Should I buy it, and how?"** | The Verdict says whether to read it at all, and how to get it: first-hand, second-hand, Kindle or a summary, following your buying preferences. The **Buy list** keeps your order and the last-known price. |
 | **"I'm in a second-hand bookstore."** | Snap a price tag: buy or skip, and the discount versus new. Snap a whole rack: up to five gems worth picking. |
-| **"What do I own, and what am I reading?"** | Photograph your shelf to catalogue it. Statuses move as you act: Not started → Reading → Finished. Notes (dictation works) and reviews with a rating and "would you re-read?". |
+| **"What do I own, and what am I reading?"** | Photograph your shelf to catalogue it. Statuses move as you act: Not started → Reading → Finished. **Pin** up to 5 books to keep your current focus on top. Notes (dictation works) and reviews with a rating and "would you re-read?". |
 | **"Surprise me."** | A monthly **check-in**: books like the ones you loved, something different or even opposing, and what's waiting on your Buy list. |
 | **"I'm moving house."** | A **give-away check** suggests which books can go, and never your keepers. |
 

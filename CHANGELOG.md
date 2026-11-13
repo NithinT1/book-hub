@@ -4,6 +4,11 @@ All notable changes to Book Hub. Versions follow [semantic versioning](https://s
 
 Each entry says whether you need to **re-upload skills** or **reconnect the connector** after updating (see [Updating](docs/SETUP.md#updating)).
 
+## [2.10.0] — Pins
+
+### Added
+- **Pin to focus:** pin up to 5 books from My shelf (Reading or Not started). Pins sit on top of My shelf in your order (▲▼ to reorder) and come first in Home's "Reading now". Pin and unpin from ⋯ or the book page. With 5 pinned, the hub shows your pins so you can swap one. A pinned book unpins itself when you finish it, give it away or archive it.
+
 ## [2.9.0] — Book Quiz
 
 **After updating:** upload the new `book-quiz` skill, and reconnect the connector (a new tool, `save_quiz`). Coming from 2.7, also re-upload the other skills (see 2.8.0).

@@ -10,6 +10,7 @@ import {
 	getCurrency,
 	getSource,
 	listDiscussions,
+	listSources,
 	listSummaries,
 	mergeSources,
 	saveSource,
@@ -20,7 +21,7 @@ import {
 	type SourceDetail,
 	type Verdict,
 } from "../db";
-import { applyStatusEvent, moveOnBuyList, removeTag, REVIEW_SECTIONS, reviewFromMarkdown, reviewToMarkdown, saveReview, saveTags, setHiddenFromFeatured, setStatus } from "../library";
+import { applyStatusEvent, MAX_PINS, moveOnBuyList, movePin, pinBook, removeTag, unpinBook, REVIEW_SECTIONS, reviewFromMarkdown, reviewToMarkdown, saveReview, saveTags, setHiddenFromFeatured, setStatus } from "../library";
 import { CURRENCIES, isCurrency, showMoney } from "../currency";
 import { renderMarkdown } from "../markdown";
 
@@ -251,6 +252,9 @@ ${older.length ? `<details><summary>Earlier quizzes (${older.length})</summary><
 					: `<a href="${esc(claudeLink(`/book-quiz ${s.title}${by}`))}" target="_blank" rel="noopener"${tip("quiz")}>${s.quizzes.length ? "Retake quiz" : "Quiz me"}</a>`
 				: "",
 			main.includes("Discuss") || !["own", "finished", "given_away"].includes(st) ? "" : `<a href="${esc(claudeLink(`/book-discuss ${s.title}${by} — load my notes and past discussions, then ask me which chapter or topic.`))}" target="_blank" rel="noopener"${tip("discuss")}>Discuss</a>`,
+			["own", "reading"].includes(st)
+				? `<form method="post" action="/book/${id}/${s.pin_rank != null ? "unpin" : "pin"}"><input type="hidden" name="back" value="/book/${id}"><button${tip(s.pin_rank != null ? "unpin" : "pin")}>${s.pin_rank != null ? "Unpin" : "Pin to focus"}</button></form>`
+				: "",
 			["own", "reading", "finished"].includes(st) && s.owned_format !== "kindle" ? `<a href="/book/${id}/give?back=${back}"${tip("give")}>Give away</a>` : "",
 			st === "archived"
 				? `<form method="post" action="/book/${id}/status"><input type="hidden" name="status" value="none"><button${tip("unarchive")}>Unarchive</button></form>`
@@ -328,6 +332,44 @@ book.post("/book/:id/verdict/unlock", async (c) => {
 	const id = Number(c.req.param("id"));
 	await unlockVerdict(c.env.DB, id);
 	return c.redirect(`/book/${id}`, 303);
+});
+
+book.post("/book/:id/pin", async (c) => {
+	const id = Number(c.req.param("id"));
+	const form = await c.req.formData();
+	const r = await pinBook(c.env.DB, id);
+	if (r === "full") return c.redirect(`/pins/full?book=${id}&back=${encodeURIComponent(safeBack(form.get("back"), "/shelf"))}`, 303);
+	return c.redirect(safeBack(form.get("back"), "/shelf"), 303);
+});
+
+book.post("/book/:id/unpin", async (c) => {
+	const form = await c.req.formData();
+	await unpinBook(c.env.DB, Number(c.req.param("id")));
+	return c.redirect(safeBack(form.get("back"), "/shelf"), 303);
+});
+
+book.post("/book/:id/pin-move", async (c) => {
+	const form = await c.req.formData();
+	await movePin(c.env.DB, Number(c.req.param("id")), form.get("dir") === "down" ? "down" : "up");
+	return c.redirect(safeBack(form.get("back"), "/shelf"), 303);
+});
+
+// Already 5 pins: show them, let me unpin one, then pin the new book.
+book.get("/pins/full", async (c) => {
+	const id = Number(c.req.query("book"));
+	const back = safeBack(c.req.query("back") ?? null, "/shelf");
+	const [s, pins] = await Promise.all([getSource(c.env.DB, id), listSources(c.env.DB, { pinned: true, includeArchived: true, sort: "pins", limit: 10 })]);
+	if (!s) return notFound(c, id);
+	const here = `/pins/full?book=${id}&back=${encodeURIComponent(back)}`;
+	const room = pins.length < MAX_PINS;
+	return c.html(
+		layout(c, "shelf", "Pins are full", `
+<p>${room ? `There's room now. Pin <strong>${esc(s.title)}</strong>?` : `You have ${MAX_PINS} pinned books already. Unpin one to make room for <strong>${esc(s.title)}</strong>.`}</p>
+<ul class="cards">${pins
+			.map((p, i) => `<li class="book"><div class="rank"><b>${i + 1}</b></div><a class="row" href="/book/${p.id}"><span class="row-text"><strong>${esc(p.title)}</strong><span class="muted">${esc(p.authors.join(", "))}</span></span></a><div class="row-actions"><form method="post" action="/book/${p.id}/unpin"><input type="hidden" name="back" value="${esc(here)}"><button class="act">Unpin</button></form></div></li>`)
+			.join("")}</ul>
+<div class="actions">${room ? `<form method="post" action="/book/${id}/pin"><input type="hidden" name="back" value="${esc(back)}"><button class="btn">Pin ${esc(s.title)}</button></form>` : ""}<a class="btn secondary" href="${esc(back)}">Cancel</a></div>`),
+	);
 });
 
 book.post("/book/:id/hide-featured", async (c) => {

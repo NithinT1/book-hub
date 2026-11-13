@@ -44,7 +44,10 @@ export const COMMANDS: [string, string][] = [
 lists.get("/", async (c) => {
 	const db = c.env.DB;
 	const [reading, buy, featured, requests, counts, fb, activity, changed, unfinished] = await Promise.all([
-		listSources(db, { status: "reading", sort: "recent", limit: 5 }),
+		// Reading now: my pins first (my current focus), then the rest of what I'm reading.
+		Promise.all([listSources(db, { pinned: true, sort: "pins", limit: 5 }), listSources(db, { status: "reading", sort: "recent", limit: 10 })]).then(([pins, rest]) =>
+			[...pins, ...rest.filter((r) => r.pin_rank == null)].slice(0, Math.max(5, pins.length)),
+		),
 		listSources(db, { status: "want_to_buy", sort: "buy", limit: 5 }),
 		listSources(db, { mostFeatured: true, statuses: ["none", "want_to_buy", "own"], sort: "featured", limit: 200 }),
 		recentRequests(db, 5),
@@ -159,12 +162,22 @@ const SHELF_VIEWS: [string, string, Status[] | null, string?][] = [
 
 lists.get("/shelf", async (c) => {
 	const view = SHELF_VIEWS.find(([k]) => k === c.req.query("status")) ?? SHELF_VIEWS[0];
-	const rows = await listSources(c.env.DB, { statuses: view[2]!, archiveReason: view[3], sort: "library", limit: 1000, includeArchived: true });
+	const back = `/shelf?status=${view[0]}`;
+	const [all, pins] = await Promise.all([
+		listSources(c.env.DB, { statuses: view[2]!, archiveReason: view[3], sort: "library", limit: 1000, includeArchived: true }),
+		listSources(c.env.DB, { pinned: true, sort: "pins", limit: 5 }),
+	]);
+	// Pins sit in their own section on top (numbered in order); the list below leaves them out.
+	const showPins = ["all", "reading", "own"].includes(view[0]);
+	const pinnedHere = showPins ? pins.filter((p) => view[2]!.includes(p.library_status)) : [];
+	const rows = showPins ? all.filter((r) => r.pin_rank == null) : all;
 	return c.html(
 		layout(c, "shelf", "My shelf", `
 <nav class="segmented">${SHELF_VIEWS.map(([k, label]) => `<a href="/shelf?status=${k}"${k === view[0] ? ` aria-current="page"` : ""}>${label}</a>`).join("")}</nav>
-<p class="muted">${rows.length} ${rows.length === 1 ? "book" : "books"}</p>
-${list(rows.map((s) => bookRow(s, { back: `/shelf?status=${view[0]}` })), "Nothing here.")}`, {
+${showPins ? `<section class="pins"><h2>📌 Pinned <span class="muted">(${pins.length}/5)</span></h2>
+${pinnedHere.length ? list(pinnedHere.map((s) => bookRow({ ...s, pin_rank: pins.indexOf(s) + 1 }, { back, pins: true })), "") : `<p class="muted">${pins.length ? "None in this view." : "Pin up to 5 books you're focusing on: ⋯ → Pin to focus. They stay here, on top."}</p>`}</section>` : ""}
+<p class="muted">${rows.length} ${showPins && pinnedHere.length ? "more " : ""}${rows.length === 1 ? "book" : "books"}</p>
+${list(rows.map((s) => bookRow(s, { back })), "Nothing here.")}`, {
 			actions: `${askButton("Add shelf photos", "/book-shelf I'm sending photos of my bookshelf — add the books to my library.", "btn", "addShelfPhotos")}
 <a class="btn secondary" href="/add"${tip("add")}>Add a book</a>
 ${askButton("Give-away check", "/book-shelf Give-away check: which of my books can I give away?", "btn secondary", "giveawayCheck")}`,

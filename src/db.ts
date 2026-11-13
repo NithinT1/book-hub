@@ -52,6 +52,8 @@ export type Source = {
 	hide_from_featured: number;
 	series_id: number | null;
 	series_position: number | null;
+	/** 1–5 when pinned on My shelf (my current focus), in my order. */
+	pin_rank: number | null;
 	verdict: Verdict | null;
 	verdict_how: string | null;
 	verdict_why: string | null;
@@ -397,6 +399,7 @@ export async function listSources(
 		type?: Source["type"];
 		timeless?: string;
 		mostFeatured?: boolean;
+		pinned?: boolean;
 		sort?: keyof typeof SORTS;
 		limit?: number;
 	} = {},
@@ -408,6 +411,7 @@ export async function listSources(
 	if (opts.type) (where.push("s.type = ?"), vals.push(opts.type));
 	if (opts.statuses?.length) (where.push(`s.library_status IN (${opts.statuses.map(() => "?").join(",")})`), vals.push(...opts.statuses));
 	if (opts.archiveReason) (where.push("s.archive_reason = ?"), vals.push(opts.archiveReason));
+	if (opts.pinned) where.push("s.pin_rank IS NOT NULL");
 	if (!opts.status && !opts.statuses && !opts.includeArchived) where.push("s.library_status != 'archived'");
 	if (opts.tag) (where.push("s.id IN (SELECT source_id FROM source_tags WHERE tag = ?)"), vals.push(opts.tag));
 	if (opts.timeless) (where.push("json_extract(c.card, '$.timeless') = ?"), vals.push(opts.timeless));
@@ -527,6 +531,7 @@ const SORTS = {
 		WHEN 'finished' THEN (CASE WHEN EXISTS (SELECT 1 FROM notes n WHERE n.source_id = s.id AND n.kind = 'review') THEN 3 ELSE 2 END)
 		WHEN 'archived' THEN 4 WHEN 'given_away' THEN 5 ELSE 6 END, s.status_changed_at DESC, s.title COLLATE NOCASE`,
 	buy: "s.buy_rank IS NULL, s.buy_rank, s.title COLLATE NOCASE",
+	pins: "s.pin_rank",
 	best: "s.updated_at DESC, s.id DESC", // re-sorted in code by bestFirst
 	quality: "s.updated_at DESC, s.id DESC", // re-sorted in code
 	fit: "s.updated_at DESC, s.id DESC", // re-sorted in code

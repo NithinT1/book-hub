@@ -328,3 +328,40 @@ describe("search", () => {
 		expect(archived).toBeGreaterThan(0);
 	});
 });
+
+describe("pins on My shelf", () => {
+	it("pins up to 5 shelf books in my order, on top of My shelf and first on Home", async () => {
+		const ids: number[] = [];
+		for (const t of ["Pin One", "Pin Two", "Pin Three", "Pin Four", "Pin Five", "Pin Six"]) ids.push(await book(t, { library_status: "reading" }));
+		const notMine = await book("Not On Shelf");
+		for (const id of ids.slice(0, 5)) expect((await post(`/book/${id}/pin`, { back: "/shelf" })).headers.get("Location")).toBe("/shelf");
+		// A sixth is refused and explained.
+		const full = await post(`/book/${ids[5]}/pin`, { back: "/shelf" });
+		expect(full.headers.get("Location")).toContain(`/pins/full?book=${ids[5]}`);
+		expect(await (await get(full.headers.get("Location")!)).text()).toContain("You have 5 pinned books already");
+		// Only shelf books can be pinned.
+		await post(`/book/${notMine}/pin`, { back: "/shelf" });
+		expect((await getSource(db, notMine))!.pin_rank).toBeNull();
+		// Reorder: Pin Two moves up.
+		await post(`/book/${ids[1]}/pin-move`, { dir: "up", back: "/shelf" });
+		let shelf = await (await get("/shelf")).text();
+		expect(shelf).toContain("📌 Pinned <span class=\"muted\">(5/5)</span>");
+		expect(shelf.indexOf("Pin Two")).toBeLessThan(shelf.indexOf("Pin One"));
+		expect(shelf.indexOf("Pin Five")).toBeLessThan(shelf.indexOf("Pin Six"));
+		expect(shelf.split("<strong>Pin One</strong>").length).toBe(2); // not repeated in the list below
+		const home = await (await get("/")).text();
+		expect(home.indexOf("Pin Two")).toBeLessThan(home.indexOf("Pin One")); // pins first, in my order
+		expect(home).not.toContain("<strong>Pin Six</strong>"); // Reading now shows 5: here, all pins
+		// Finishing a pinned book unpins it and frees a place.
+		const { setStatus } = await import("../src/library");
+		await setStatus(db, ids[0], "finished");
+		expect((await getSource(db, ids[0]))!.pin_rank).toBeNull();
+		expect((await getSource(db, ids[1]))!.pin_rank).toBe(1);
+		await post(`/book/${ids[5]}/pin`, { back: "/shelf" });
+		expect((await getSource(db, ids[5]))!.pin_rank).toBe(5);
+		await post(`/book/${ids[5]}/unpin`, { back: "/shelf" });
+		expect((await getSource(db, ids[5]))!.pin_rank).toBeNull();
+		shelf = await (await get("/shelf")).text();
+		expect(shelf).toContain("(4/5)");
+	});
+});
