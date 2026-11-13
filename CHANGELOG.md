@@ -4,6 +4,11 @@ All notable changes to Book Hub. Versions follow [semantic versioning](https://s
 
 Each entry says whether you need to **re-upload skills** or **reconnect the connector** after updating (see [Updating](docs/SETUP.md#updating)).
 
+## [2.10.1] — Book Quiz on Home
+
+### Added
+- **Book Quiz** button in Home's Ask AI, next to Book details. Type a book name and tap it to start `/book-quiz` for that book.
+
 ## [2.10.0] — Pins
 
 ### Added

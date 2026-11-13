@@ -53,7 +53,7 @@ const STATUS_HELP =
 
 // The connector deliberately has no delete tools.
 export function createServer(context?: { requestInfo?: Request }) {
-	const server = new McpServer({ name: "Book Hub", version: "2.10.0" }, { instructions: INSTRUCTIONS });
+	const server = new McpServer({ name: "Book Hub", version: "2.10.1" }, { instructions: INSTRUCTIONS });
 	const login = getMcpAuthContext()?.props?.login as string | undefined;
 	const db = env.DB;
 	// Links in answers point at this hub: HUB_URL if set, else the address the connector was reached on.

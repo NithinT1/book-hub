@@ -307,6 +307,13 @@ describe("search", () => {
 		expect(await (await get("/")).text()).not.toContain('action="/discover"><input type="search"');
 		expect(await (await get("/")).text()).toContain("[hidden]{display:none!important}"); // the search field starts closed
 	});
+	it("Home's Ask AI has a Book Quiz button right after Book details, fed by the topic box", async () => {
+		const home = await (await get("/")).text();
+		expect(home.indexOf(">Book details</a>")).toBeLessThan(home.indexOf(">Book Quiz</a>"));
+		expect(home.indexOf(">Book Quiz</a>")).toBeLessThan(home.indexOf(">At a book store<"));
+		expect(home).toContain('id="quiz-link"');
+		expect(home).toContain('link("quiz-link", "/book-quiz ")');
+	});
 	it("shows your books first, and Archived & Skipped below only when they match", async () => {
 		await book("Rivers of Thought", { library_status: "own" });
 		const archived = await book("Rivers Archived", { library_status: "archived" });

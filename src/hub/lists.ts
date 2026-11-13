@@ -91,6 +91,7 @@ ${showSetup ? `<section class="setup" aria-label="Set up Book Hub">
   <div class="actions">
     <a id="recs-link" class="btn" href="${esc(claudeLink("/book-recs "))}" target="_blank" rel="noopener"${tip("recs")}>Recommend books</a>
     <a id="details-link" class="btn secondary" href="${esc(claudeLink("/book-details "))}" target="_blank" rel="noopener"${tip("details")}>Book details</a>
+    <a id="quiz-link" class="btn secondary" href="${esc(claudeLink("/book-quiz "))}" target="_blank" rel="noopener"${tip("quiz")}>Book Quiz</a>
     ${askButton("At a book store", "/book-store ", "btn secondary", "store")}
     ${askButton("Check-in", "/book-checkin", "btn secondary", "checkin")}
   </div>
@@ -129,7 +130,7 @@ ${requests.length ? `<ul class="plain">${requests.map((r) => `<li><strong>${esc(
 <script>
 const topic = document.getElementById("topic");
 const link = (id, prefix) => { document.getElementById(id).href = "https://claude.ai/new?q=" + encodeURIComponent(prefix + topic.value.trim()); };
-topic.addEventListener("input", () => { link("recs-link", "/book-recs "); link("details-link", "/book-details "); });
+topic.addEventListener("input", () => { link("recs-link", "/book-recs "); link("details-link", "/book-details "); link("quiz-link", "/book-quiz "); });
 </script>`, { h1: false }),
 	);
 });
