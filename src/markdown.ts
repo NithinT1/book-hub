@@ -15,6 +15,9 @@ function inline(text: string): string {
 		.replace(/(^|\s)_([^_]+)_(?=\s|$|[.,;:!?])/g, "$1<em>$2</em>");
 }
 
+// A picture on its own line: ![alt](https://… or data:image/…;base64,…). Shown in <img>, where SVG can't run scripts.
+const IMAGE = /^\s*!\[([^\]]*)\]\((https:\/\/[^\s)]+|data:image\/(?:svg\+xml|png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+)\)\s*$/;
+
 export function renderMarkdown(md: string): string {
 	const lines = md.replace(/\r\n/g, "\n").split("\n");
 	const out: string[] = [];
@@ -27,6 +30,12 @@ export function renderMarkdown(md: string): string {
 			while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
 			i++;
 			out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+			continue;
+		}
+		const img = line.match(IMAGE);
+		if (img) {
+			out.push(`<figure><img src="${esc(img[2])}" alt="${esc(img[1])}" loading="lazy"></figure>`);
+			i++;
 			continue;
 		}
 		const h = line.match(/^(#{1,4})\s+(.*)$/);
@@ -77,7 +86,7 @@ export function renderMarkdown(md: string): string {
 			continue;
 		}
 		const para: string[] = [];
-		while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|>|\s*([-*]|\d+\.)\s+|\s*\|.*\|\s*$)/.test(lines[i])) para.push(lines[i++]);
+		while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|>|\s*([-*]|\d+\.)\s+|\s*\|.*\|\s*$)/.test(lines[i]) && !IMAGE.test(lines[i])) para.push(lines[i++]);
 		if (para.length === 0) para.push(lines[i++]); // e.g. a lone "|" line that isn't a table
 		out.push(`<p>${para.map(inline).join("<br>")}</p>`);
 	}

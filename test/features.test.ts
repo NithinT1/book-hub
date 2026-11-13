@@ -127,6 +127,16 @@ describe("reading profile and export", () => {
 });
 
 describe("markdown rendering", () => {
+	it("shows pictures on their own line (https or base64 data), and nothing else", () => {
+		const svg = "PHN2Zz48L3N2Zz4=";
+		const html = renderMarkdown(`Text before\n![Fig 1](data:image/svg+xml;base64,${svg})\n*Caption*\n\n![Cover](https://e.com/a.jpg)`);
+		expect(html).toContain(`<figure><img src="data:image/svg+xml;base64,${svg}" alt="Fig 1" loading="lazy"></figure>`);
+		expect(html).toContain('<img src="https://e.com/a.jpg" alt="Cover"');
+		expect(html).toContain("<p>Text before</p>");
+		expect(html).toContain("<em>Caption</em>");
+		for (const bad of ["![x](javascript:alert(1))", "![x](data:text/html;base64,PHNjcmlwdD4=)", "![x](http://e.com/a.jpg)", '![x"onerror="y](https://e.com/a.jpg)'])
+			expect(renderMarkdown(bad), bad).not.toMatch(/<img[^>]*(javascript|text\/html|http:|onerror=")/);
+	});
 	it("renders tables and links but never raw HTML or javascript links", () => {
 		const html = renderMarkdown("| A | B |\n|---|---|\n| **x** | [y](https://e.com) |\n\n<script>alert(1)</script>\n[bad](javascript:alert(1))");
 		expect(html).toContain("<table>");
