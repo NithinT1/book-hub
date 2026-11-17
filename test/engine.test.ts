@@ -479,7 +479,8 @@ describe("notifications", () => {
 		const [flip] = await listNotices(db);
 		await dismissNotice(db, flip.key);
 		expect((await listNotices(db, Date.now() + 365 * DAY)).some((x) => x.title === "Flip")).toBe(false);
-		await post("/notifications/dismiss", { key: "x:1; DROP", back: "https://evil.example" }).then((res) => expect(res.headers.get("location")).toBe("/notifications"));
+		const bad = await post("/notifications/dismiss", { key: "x:1; DROP", back: "https://evil.example" });
+		expect(bad.headers.get("location")).toBe("/notifications");
 	});
 	it("Home no longer carries the banners or the quiz panel", async () => {
 		const home = await (await get("/")).text();
